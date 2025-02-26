@@ -19,6 +19,7 @@ dotenv.load_dotenv()
 
 from cool_squad.core import Message
 from cool_squad.bots import Bot
+from cool_squad.logging import log_api_call
 
 async def test_openai():
     """Test OpenAI API."""
@@ -58,12 +59,22 @@ async def test_anthropic():
         
         client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
         
+        messages = [
+            {"role": "user", "content": "Hello, what's your name?"}
+        ]
+        
         message = client.messages.create(
             model="claude-3-haiku-20240307",
             max_tokens=1000,
-            messages=[
-                {"role": "user", "content": "Hello, what's your name?"}
-            ]
+            messages=messages
+        )
+        
+        # Log the API call
+        log_api_call(
+            provider="anthropic",
+            model="claude-3-haiku-20240307",
+            messages=messages,
+            response=message
         )
         
         print(f"✅ Anthropic API working: {message.content[0].text[:50]}...")
