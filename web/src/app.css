@@ -1,0 +1,172 @@
+/* Global styles for cool_squad */
+
+/* Reset */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Dark theme variables */
+:root {
+  --bg-primary: #121212;
+  --bg-secondary: #1e1e1e;
+  --bg-tertiary: #2d2d2d;
+  --text-primary: #e0e0e0;
+  --text-secondary: #a0a0a0;
+  --accent-primary: #bb86fc;
+  --accent-secondary: #03dac6;
+  --error: #cf6679;
+  --success: #4caf50;
+  --warning: #ff9800;
+  --border: #333;
+  --shadow: rgba(0, 0, 0, 0.3);
+}
+
+/* Typography */
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  line-height: 1.6;
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+h1 {
+  font-size: 2rem;
+}
+
+h2 {
+  font-size: 1.75rem;
+}
+
+h3 {
+  font-size: 1.5rem;
+}
+
+p {
+  margin-bottom: 1rem;
+}
+
+a {
+  color: var(--accent-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Form elements */
+input, textarea, select, button {
+  font-family: inherit;
+  font-size: 1rem;
+  padding: 0.5rem;
+  border-radius: 4px;
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+button {
+  cursor: pointer;
+  background-color: var(--accent-primary);
+  color: #000;
+  border: none;
+  padding: 0.5rem 1rem;
+  transition: background-color 0.2s;
+}
+
+button:hover {
+  background-color: #9966cc;
+}
+
+button:disabled {
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+}
+
+/* Utility classes */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.card {
+  background-color: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 2px 8px var(--shadow);
+  margin-bottom: 1rem;
+}
+
+.flex {
+  display: flex;
+}
+
+.flex-col {
+  flex-direction: column;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.gap-2 {
+  gap: 0.5rem;
+}
+
+.gap-4 {
+  gap: 1rem;
+}
+
+.mt-2 {
+  margin-top: 0.5rem;
+}
+
+.mt-4 {
+  margin-top: 1rem;
+}
+
+.mb-2 {
+  margin-bottom: 0.5rem;
+}
+
+.mb-4 {
+  margin-bottom: 1rem;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border);
+} 
