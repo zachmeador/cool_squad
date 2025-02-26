@@ -19,7 +19,7 @@ dotenv.load_dotenv()
 
 from cool_squad.core import Message
 from cool_squad.bots import Bot
-from cool_squad.logging import log_api_call
+from cool_squad.custom_logging import log_api_call
 
 async def test_openai():
     """Test OpenAI API."""

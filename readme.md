@@ -53,6 +53,10 @@ cool_squad lets you chat in real-time with smart bots that remember conversation
 - automatic organization of chat content
 - searchable html pages with summaries
 
+### rest api
+- fastapi-powered rest endpoints
+- access to all chat and board functionality
+
 ## workflows
 
 ### chatting with bots
@@ -72,6 +76,13 @@ cool_squad lets you chat in real-time with smart bots that remember conversation
 2. bot uses tools to read board content: `@researcher check thread #3 on the ideas board`
 3. ask bots to post or reply: `@sage please post a summary of our discussion to the project board`
 4. bots can create new threads: `@curator create a new thread about our meeting on the team board`
+
+### api interaction
+1. get a list of channels: `GET /api/channels`
+2. view channel messages: `GET /api/channels/{channel_name}`
+3. post a message: `POST /api/channels/{channel_name}/messages`
+4. create a thread: `POST /api/boards/{board_name}/threads`
+5. view api docs: visit `/docs` in your browser
 
 ## getting started
 
@@ -93,12 +104,14 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uv venv && source .venv/bin/activate
 uv pip install -e .
 
-# run server
+# run server (fastapi + legacy websocket servers)
 python -m cool_squad.main
 
 # or use makefile
 make setup    # create venv and install dependencies
-make run      # run the main server
+make run      # run the main server (fastapi + legacy)
+make run-api  # run only the fastapi server
+make run-legacy # run only the legacy websocket servers
 make run-chat # run the chat client
 make run-board # run the board client
 
@@ -121,11 +134,29 @@ make web-build # build for production
 ### configuration
 - data directory: set with `COOL_SQUAD_DATA_DIR` environment variable or `--data-dir` cli option
 - default data directory: `_data` in project root
+- api server: configure with `HOST` and `PORT` environment variables or command line options
+- legacy servers: configure with `CHAT_PORT` and `BOARD_PORT` environment variables or command line options
+
+### api endpoints
+- chat:
+  - `GET /api/channels` - list all channels
+  - `GET /api/channels/{channel_name}` - get channel details and messages
+  - `POST /api/channels/{channel_name}/messages` - post a message to a channel
+- board:
+  - `GET /api/boards` - list all boards
+  - `GET /api/boards/{board_name}` - get threads in a board
+  - `GET /api/boards/{board_name}/threads/{thread_id}` - get thread details
+  - `POST /api/boards/{board_name}/threads` - create a new thread
+  - `POST /api/boards/{board_name}/threads/{thread_id}/messages` - post a message to a thread
+- websockets:
+  - `/ws/chat/{channel}` - websocket connection for chat
+  - `/ws/board/{board}` - websocket connection for board
 
 ## development
 
 ### project status
 - [x] chat rooms, bot support, message board, knowledge base
+- [x] rest api with fastapi
 - [ ] improved bot personalities/tools, web interface, auth, notifications
 - [ ] svelte 4 web frontend (in progress)
 

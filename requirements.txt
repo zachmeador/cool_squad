@@ -4,4 +4,7 @@ asyncio
 pathlib
 python-dotenv
 pytest
-pytest-asyncio 
+pytest-asyncio
+fastapi
+uvicorn[standard]
+pydantic 

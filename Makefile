@@ -1,4 +1,4 @@
-.PHONY: setup install run run-chat run-board update-kb clean lint format test test-coverage test-verbose web-setup web-dev web-build
+.PHONY: setup install run run-chat run-board run-api run-legacy update-kb clean lint format test test-coverage test-verbose web-setup web-dev web-build
 
 # Create virtual environment and install dependencies
 setup:
@@ -13,17 +13,25 @@ install:
 dev-install:
 	uv pip install -e ".[dev]"
 
-# Run the main server
+# Run the main server (FastAPI + legacy servers)
 run:
 	python -m cool_squad.main
 
-# Run the chat server only
-run-chat-server:
-	python -m cool_squad.main --chat-only
+# Run only the FastAPI server (no legacy servers)
+run-api:
+	python -m cool_squad.main --no-legacy
 
-# Run the board server only
+# Run only the legacy servers
+run-legacy:
+	python -m cool_squad.main --legacy-only
+
+# Run the legacy chat server only
+run-chat-server:
+	python -m cool_squad.main --legacy-only --chat-only
+
+# Run the legacy board server only
 run-board-server:
-	python -m cool_squad.main --board-only
+	python -m cool_squad.main --legacy-only --board-only
 
 # Run the chat client
 run-chat:
@@ -87,9 +95,11 @@ help:
 	@echo "  make setup          - Create virtual environment and install dependencies"
 	@echo "  make install        - Install dependencies only"
 	@echo "  make dev-install    - Install development dependencies"
-	@echo "  make run            - Run the main server"
-	@echo "  make run-chat-server - Run the chat server only"
-	@echo "  make run-board-server - Run the board server only"
+	@echo "  make run            - Run the main server (FastAPI + legacy servers)"
+	@echo "  make run-api        - Run only the FastAPI server (no legacy servers)"
+	@echo "  make run-legacy     - Run only the legacy servers"
+	@echo "  make run-chat-server - Run the legacy chat server only"
+	@echo "  make run-board-server - Run the legacy board server only"
 	@echo "  make run-chat       - Run the chat client"
 	@echo "  make run-board      - Run the board client"
 	@echo "  make update-kb      - Update the knowledge base"

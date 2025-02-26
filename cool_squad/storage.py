@@ -23,6 +23,23 @@ class Storage:
         """Get the file path for a board's data."""
         return os.path.join(self.boards_dir, f"{board_name}.json")
     
+    def list_channels(self) -> List[str]:
+        """List all available channels."""
+        channels = []
+        for file in os.listdir(self.channels_dir):
+            if file.endswith(".json"):
+                channels.append(file[:-5])  # Remove .json extension
+        return channels
+    
+    def list_boards(self) -> List[Board]:
+        """List all available boards."""
+        boards = []
+        for file in os.listdir(self.boards_dir):
+            if file.endswith(".json"):
+                board_name = file[:-5]  # Remove .json extension
+                boards.append(self.load_board(board_name))
+        return boards
+    
     def save_channel(self, channel: Channel) -> None:
         """Save a channel to disk."""
         channel_data = {
