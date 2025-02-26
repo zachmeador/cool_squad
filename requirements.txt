@@ -1,0 +1,7 @@
+openai
+websockets
+asyncio
+pathlib
+python-dotenv
+pytest
+pytest-asyncio 

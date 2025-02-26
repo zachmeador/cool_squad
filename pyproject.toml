@@ -1,0 +1,42 @@
+[project]
+name = "cool_squad"
+version = "0.1.0"
+description = "chat with your robot friends"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "cool_squad team"}
+]
+dependencies = [
+    "openai",
+    "websockets",
+    "asyncio",
+    "pathlib",
+    "python-dotenv",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+cool-squad = "cool_squad.main:main"
+cool-squad-chat = "cool_squad.client:main"
+cool-squad-board = "cool_squad.board_client:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["cool_squad"]
+
+[tool.uv.pip]
+# Use binary packages by default for speed
+no-binary = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "pytest-asyncio",
+    "black",
+    "isort",
+] 
