@@ -101,6 +101,16 @@ make setup    # create venv and install dependencies
 make run      # run the main server
 make run-chat # run the chat client
 make run-board # run the board client
+
+# web frontend (requires bun)
+cd web
+bun install
+bun run dev
+
+# or use makefile for web frontend
+make web-setup # install web dependencies
+make web-dev   # run web development server
+make web-build # build for production
 ```
 
 ### commands
@@ -123,6 +133,7 @@ make run-board # run the board client
 - focused on chat and message board functionality
 - no authentication required
 - responsive design for desktop and mobile
+- built with bun for improved performance and developer experience
 - components:
   - chat interface with channel selection
   - message board with thread view

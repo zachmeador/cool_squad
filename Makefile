@@ -1,4 +1,4 @@
-.PHONY: setup install run run-chat run-board update-kb clean lint format test test-coverage test-verbose
+.PHONY: setup install run run-chat run-board update-kb clean lint format test test-coverage test-verbose web-setup web-dev web-build
 
 # Create virtual environment and install dependencies
 setup:
@@ -60,6 +60,16 @@ test-coverage:
 test-verbose:
 	pytest -v tests/
 
+# Web frontend commands
+web-setup:
+	cd web && bun install
+
+web-dev:
+	cd web && bun run dev
+
+web-build:
+	cd web && bun run build
+
 # Clean up generated files
 clean:
 	rm -rf build/
@@ -67,6 +77,9 @@ clean:
 	rm -rf *.egg-info/
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
+	rm -rf web/build
+	rm -rf web/.svelte-kit
+	rm -rf web/node_modules
 
 # Show help
 help:
@@ -80,6 +93,9 @@ help:
 	@echo "  make run-chat       - Run the chat client"
 	@echo "  make run-board      - Run the board client"
 	@echo "  make update-kb      - Update the knowledge base"
+	@echo "  make web-setup      - Install web frontend dependencies"
+	@echo "  make web-dev        - Run web frontend development server"
+	@echo "  make web-build      - Build web frontend for production"
 	@echo "  make format         - Format code with black"
 	@echo "  make sort-imports   - Sort imports with isort"
 	@echo "  make lint           - Run all formatting"
