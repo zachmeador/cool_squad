@@ -117,6 +117,19 @@ make run-board # run the board client
 ### project status
 - [x] chat rooms, bot support, message board, knowledge base
 - [ ] improved bot personalities/tools, web interface, auth, notifications
+- [ ] svelte 4 web frontend (in progress)
+
+### web frontend (svelte 4)
+- focused on chat and message board functionality
+- no authentication required
+- responsive design for desktop and mobile
+- components:
+  - chat interface with channel selection
+  - message board with thread view
+  - basic settings configuration
+- connects to existing websocket servers
+- simple installation and setup
+- only dark mode. let there be dark.
 
 ### testing
 ```bash
