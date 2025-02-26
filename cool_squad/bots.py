@@ -4,6 +4,7 @@ import openai
 import json
 from cool_squad.core import Message
 from cool_squad.bot_tools import BotTools, CHANNEL_TOOLS, BOARD_TOOLS
+from cool_squad.logging import log_api_call
 
 @dataclass
 class Tool:
@@ -35,24 +36,44 @@ class Bot:
 
         # if we have tools, use function calling
         if self.tools:
+            tool_definitions = [{
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.parameters
+                }
+            } for tool in self.tools]
+            
             response = openai.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                tools=[{
-                    "type": "function",
-                    "function": {
-                        "name": tool.name,
-                        "description": tool.description,
-                        "parameters": tool.parameters
-                    }
-                } for tool in self.tools],
+                tools=tool_definitions,
                 temperature=self.temperature
+            )
+            
+            # Log the API call
+            log_api_call(
+                provider="openai",
+                model=self.model,
+                messages=messages,
+                response=response,
+                tools=tool_definitions,
+                tool_calls=response.choices[0].message.tool_calls if hasattr(response.choices[0].message, "tool_calls") else None
             )
         else:
             response = openai.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 temperature=self.temperature
+            )
+            
+            # Log the API call
+            log_api_call(
+                provider="openai",
+                model=self.model,
+                messages=messages,
+                response=response
             )
 
         # handle function calls if any
@@ -89,6 +110,15 @@ class Bot:
                 messages=messages,
                 temperature=self.temperature
             )
+            
+            # Log the API call for the final response
+            log_api_call(
+                provider="openai",
+                model=self.model,
+                messages=messages,
+                response=final_response
+            )
+            
             message = final_response.choices[0].message
 
         # update memory
