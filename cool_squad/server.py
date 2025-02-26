@@ -1,119 +1,131 @@
 import asyncio
 import json
-import websockets
-from typing import Dict, Set
+from typing import Dict, Set, List
 from cool_squad.core import Message, Channel
 from cool_squad.storage import Storage
 from cool_squad.bots import create_default_bots, Bot
 
 class ChatServer:
-    def __init__(self):
-        self.storage = Storage()
+    def __init__(self, storage: Storage = None):
+        self.storage = storage or Storage()
         self.channels: Dict[str, Channel] = {}
-        self.connections: Dict[str, Set[websockets.WebSocketServerProtocol]] = {}
+        self.connections: Dict[str, Set] = {}
+        self.bots: List[Bot] = create_default_bots()
+    
+    async def register(self, websocket, channel_name: str):
+        """Register a websocket connection for a channel."""
+        if channel_name not in self.connections:
+            self.connections[channel_name] = set()
+        self.connections[channel_name].add(websocket)
         
-        # create bots with tools
-        bots = create_default_bots()
-        self.bots: Dict[str, Bot] = {bot.name: bot for bot in bots}
+        if channel_name not in self.channels:
+            self.channels[channel_name] = self.storage.load_channel(channel_name)
+    
+    async def unregister(self, websocket, channel_name: str):
+        """Unregister a websocket connection for a channel."""
+        if channel_name in self.connections:
+            self.connections[channel_name].discard(websocket)
+    
+    async def broadcast(self, channel_name: str, message: dict):
+        """Broadcast a message to all connected clients for a channel."""
+        if channel_name in self.connections:
+            for connection in self.connections[channel_name].copy():
+                try:
+                    await connection.send_json(message)
+                except Exception:
+                    # Connection might be closed or invalid
+                    self.connections[channel_name].discard(connection)
+    
+    async def handle_bot_mentions(self, message: Message, channel_name: str) -> List[Message]:
+        """Check for bot mentions and generate responses."""
+        responses = []
+        for bot in self.bots:
+            # Check if the bot's name is mentioned in the message
+            if f"@{bot.name}" in message.content:
+                response_content = await bot.process_message(message, channel_name)
+                if response_content:
+                    bot_response = Message(
+                        content=response_content,
+                        author=bot.name
+                    )
+                    responses.append(bot_response)
+        return responses
+    
+    async def handle_bot_mentions_and_broadcast(self, message: Message, channel_name: str):
+        """Handle bot mentions and broadcast responses."""
+        bot_responses = await self.handle_bot_mentions(message, channel_name)
+        for response in bot_responses:
+            self.channels[channel_name].add_message(response)
+            self.storage.save_channel(self.channels[channel_name])
+            
+            await self.broadcast(channel_name, {
+                "type": "message",
+                "channel": channel_name,
+                "content": response.content,
+                "author": response.author,
+                "timestamp": response.timestamp
+            })
 
-    async def register(self, websocket: websockets.WebSocketServerProtocol, channel_name: str):
+    async def handle_connection(self, websocket, channel_name: str):
+        """Handle a FastAPI WebSocket connection"""
+        # Accept the connection
+        await websocket.accept()
+        
+        # Register the connection
         if channel_name not in self.connections:
             self.connections[channel_name] = set()
         self.connections[channel_name].add(websocket)
 
         if channel_name not in self.channels:
             self.channels[channel_name] = self.storage.load_channel(channel_name)
-
-    async def unregister(self, websocket: websockets.WebSocketServerProtocol, channel_name: str):
-        self.connections[channel_name].remove(websocket)
-        if not self.connections[channel_name]:
-            del self.connections[channel_name]
-
-    async def broadcast(self, channel_name: str, message: dict):
-        if channel_name in self.connections:
-            websockets_to_remove = set()
-            for websocket in self.connections[channel_name]:
-                try:
-                    await websocket.send(json.dumps(message))
-                except websockets.exceptions.ConnectionClosed:
-                    websockets_to_remove.add(websocket)
-            
-            for websocket in websockets_to_remove:
-                await self.unregister(websocket, channel_name)
-
-    async def handle_bot_mentions(self, message: Message, channel_name: str):
-        content = message.content.lower()
-        responses = []
         
-        for bot_name, bot in self.bots.items():
-            if f"@{bot_name}" in content:
-                response = await bot.process_message(message, channel_name)
-                if response:
-                    responses.append(Message(
-                        content=response,
-                        author=bot_name
-                    ))
-        
-        return responses
-
-    async def handle_message(self, websocket: websockets.WebSocketServerProtocol):
         try:
-            # expect initial message to be channel join
-            message = await websocket.recv()
-            data = json.loads(message)
+            # Send channel history
+            channel = self.channels[channel_name]
+            for msg in channel.messages[-50:]:  # Send last 50 messages
+                await websocket.send_json({
+                    "type": "message",
+                    "channel": channel_name,
+                    "content": msg.content,
+                    "author": msg.author,
+                    "timestamp": msg.timestamp
+                })
             
-            if data["type"] != "join":
-                await websocket.close(1008, "first message must be join")
-                return
-
-            channel_name = data["channel"]
-            await self.register(websocket, channel_name)
-            
-            try:
-                async for message in websocket:
-                    data = json.loads(message)
+            # Handle incoming messages
+            while True:
+                data = await websocket.receive_json()
+                
+                if data["type"] == "message":
+                    msg = Message(
+                        content=data["content"],
+                        author=data["author"]
+                    )
                     
-                    if data["type"] == "message":
-                        msg = Message(
-                            content=data["content"],
-                            author=data["author"]
-                        )
-                        
-                        self.channels[channel_name].add_message(msg)
-                        self.storage.save_channel(self.channels[channel_name])
-                        
-                        # broadcast user message
-                        await self.broadcast(channel_name, {
-                            "type": "message",
-                            "channel": channel_name,
-                            "content": msg.content,
-                            "author": msg.author,
-                            "timestamp": msg.timestamp
-                        })
-                        
-                        # handle bot responses
-                        bot_responses = await self.handle_bot_mentions(msg, channel_name)
-                        for response in bot_responses:
-                            self.channels[channel_name].add_message(response)
-                            self.storage.save_channel(self.channels[channel_name])
-                            
-                            await self.broadcast(channel_name, {
-                                "type": "message",
-                                "channel": channel_name,
-                                "content": response.content,
-                                "author": response.author,
-                                "timestamp": response.timestamp
-                            })
+                    self.channels[channel_name].add_message(msg)
+                    self.storage.save_channel(self.channels[channel_name])
                     
-            except websockets.exceptions.ConnectionClosed:
-                pass
-            
+                    # Broadcast to all clients
+                    await self.broadcast(channel_name, {
+                        "type": "message",
+                        "channel": channel_name,
+                        "content": msg.content,
+                        "author": msg.author,
+                        "timestamp": msg.timestamp
+                    })
+                    
+                    # Handle bot responses
+                    asyncio.create_task(self.handle_bot_mentions_and_broadcast(msg, channel_name))
+        except Exception:
+            # Handle disconnection
+            pass
         finally:
-            await self.unregister(websocket, channel_name)
+            # Unregister the connection
+            if channel_name in self.connections:
+                self.connections[channel_name].discard(websocket)
 
 async def main():
     server = ChatServer()
-    async with websockets.serve(server.handle_message, "localhost", 8765):
+    async with websockets.serve(server.handle_connection, "localhost", 8765):
         await asyncio.Future()  # run forever
 
 if __name__ == "__main__":

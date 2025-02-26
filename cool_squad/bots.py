@@ -4,7 +4,7 @@ import openai
 import json
 from cool_squad.core import Message
 from cool_squad.bot_tools import BotTools, CHANNEL_TOOLS, BOARD_TOOLS
-from cool_squad.logging import log_api_call
+from cool_squad.custom_logging import log_api_call
 
 @dataclass
 class Tool:
@@ -45,7 +45,7 @@ class Bot:
                 }
             } for tool in self.tools]
             
-            response = openai.chat.completions.create(
+            response = await openai.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 tools=tool_definitions,
@@ -62,7 +62,7 @@ class Bot:
                 tool_calls=response.choices[0].message.tool_calls if hasattr(response.choices[0].message, "tool_calls") else None
             )
         else:
-            response = openai.chat.completions.create(
+            response = await openai.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 temperature=self.temperature
@@ -105,7 +105,7 @@ class Bot:
                     "content": str(output["output"])
                 })
             
-            final_response = openai.chat.completions.create(
+            final_response = await openai.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 temperature=self.temperature

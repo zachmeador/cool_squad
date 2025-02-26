@@ -75,7 +75,7 @@ async def test_broadcast(board_server, mock_websocket):
     await board_server.broadcast("test_board", test_message)
     
     # Verify the message was sent
-    mock_websocket.send.assert_called_once_with(json.dumps(test_message))
+    mock_websocket.send_json.assert_called_once_with(test_message)
 
 
 @pytest.mark.asyncio

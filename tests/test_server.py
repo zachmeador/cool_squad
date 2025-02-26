@@ -64,12 +64,12 @@ async def test_broadcast(chat_server):
     websocket1 = MagicMock()
     future1 = asyncio.Future()
     future1.set_result(None)
-    websocket1.send.return_value = future1
+    websocket1.send_json.return_value = future1
     
     websocket2 = MagicMock()
     future2 = asyncio.Future()
     future2.set_result(None)
-    websocket2.send.return_value = future2
+    websocket2.send_json.return_value = future2
     
     # Register the websockets to a channel
     await chat_server.register(websocket1, "test_channel")
@@ -80,17 +80,17 @@ async def test_broadcast(chat_server):
     await chat_server.broadcast("test_channel", message)
     
     # Verify the message was sent to both websockets
-    websocket1.send.assert_called_once_with(json.dumps(message))
-    websocket2.send.assert_called_once_with(json.dumps(message))
+    websocket1.send_json.assert_called_once_with(message)
+    websocket2.send_json.assert_called_once_with(message)
 
 
 @pytest.mark.asyncio
 async def test_handle_bot_mentions(chat_server):
     """Test handling bot mentions in messages."""
     # Mock the bot process_message method
-    for bot_name, bot in chat_server.bots.items():
+    for bot in chat_server.bots:
         future = asyncio.Future()
-        future.set_result(f"Response from {bot_name}")
+        future.set_result(f"Response from {bot.name}")
         bot.process_message = MagicMock(return_value=future)
     
     # Create a message mentioning a bot
