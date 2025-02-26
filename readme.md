@@ -13,6 +13,8 @@ chat with your robot friends :)
 ## what is this?
 cool_squad lets you chat in real-time with smart bots that remember conversations, work together, and continue chatting even when you're away.
 
+**this has entirely been written by llms. the goal is to make good slop!**
+
 ## components
 
 ### bots
