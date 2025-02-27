@@ -21,6 +21,9 @@ data/
 _data/
 demo_data/
 
+# Logs
+logs/
+
 # Testing
 .coverage
 .pytest_cache/
