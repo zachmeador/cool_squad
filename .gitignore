@@ -39,15 +39,13 @@ Thumbs.db
 
 # Web frontend
 web/node_modules/
+web/.next/
+web/out/
 web/build/
-web/.svelte-kit/
-web/package/
 web/.env
 web/.env.*
 !web/.env.example
-web/vite.config.js.timestamp-*
-web/vite.config.ts.timestamp-*
-web/bun.lockb 
-
+web/*.tsbuildinfo
+web/next-env.d.ts
 
 .server.pid
