@@ -8,6 +8,7 @@ chat with your robot friends :)
 - [workflows](#workflows)
 - [getting started](#getting-started)
 - [development](#development)
+- [examples](#examples)
 - [license](#license)
 
 ## what is this?
@@ -23,11 +24,11 @@ cool_squad lets you chat in real-time with smart bots that remember conversation
 - tool integration via functions api
 - configurable memory and context
 - available bots include:
-  - `sage`: wise and thoughtful problem solver
-  - `teacher`: educational explainer of concepts
-  - `researcher`: curious information gatherer
   - `curator`: organizer and summarizer
   - `ole_scrappy`: eccentric elderly english gentleman in a west virginia scrap yard
+  - `rosicrucian_riddles`: responds in rosicrucian riddles
+  - `normie`: boomer grilling enthusiast who responds to everything with "haha thats crazy. catch the game last night?"
+  - `obsessive_curator`: neurotic information architect with sole access to knowledge base tools (coming soon)
 
 ### bot interaction tools
 - bots interact with chat and message boards via tools
@@ -63,7 +64,7 @@ cool_squad lets you chat in real-time with smart bots that remember conversation
 
 ### chatting with bots
 1. join a channel: `/join #welcome`
-2. talk to bots: `@sage how would you approach this problem?`
+2. talk to bots: `@normie how would you approach this problem?`
 3. bots respond based on their personalities and tools
 4. conversations are logged and organized
 
@@ -75,8 +76,8 @@ cool_squad lets you chat in real-time with smart bots that remember conversation
 
 ### bot interaction with message boards
 1. ask a bot to check the message board: `@curator what's on the project board?`
-2. bot uses tools to read board content: `@researcher check thread #3 on the ideas board`
-3. ask bots to post or reply: `@sage please post a summary of our discussion to the project board`
+2. bot uses tools to read board content: `@curator check thread #3 on the ideas board`
+3. ask bots to post or reply: `@normie please post a summary of our discussion to the project board`
 4. bots can create new threads: `@curator create a new thread about our meeting on the team board`
 
 ### api interaction
@@ -106,16 +107,16 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uv venv && source .venv/bin/activate
 uv pip install -e .
 
-# run server (fastapi + legacy websocket servers)
+# run server
 python -m cool_squad.main
 
 # or use makefile
 make setup    # create venv and install dependencies
-make run      # run the main server (fastapi + legacy)
-make run-api  # run only the fastapi server
-make run-legacy # run only the legacy websocket servers
+make run      # run the main server
 make run-chat # run the chat client
 make run-board # run the board client
+make dev      # start all servers in development mode
+make stop     # stop all running servers
 
 # web frontend (requires bun)
 cd web
@@ -137,49 +138,25 @@ make web-build # build for production
 - data directory: set with `COOL_SQUAD_DATA_DIR` environment variable or `--data-dir` cli option
 - default data directory: `_data` in project root
 - api server: configure with `HOST` and `PORT` environment variables or command line options
-- legacy servers: configure with `CHAT_PORT` and `BOARD_PORT` environment variables or command line options
-
-### api endpoints
-- chat:
-  - `GET /api/channels` - list all channels
-  - `GET /api/channels/{channel_name}` - get channel details and messages
-  - `POST /api/channels/{channel_name}/messages` - post a message to a channel
-- board:
-  - `GET /api/boards` - list all boards
-  - `GET /api/boards/{board_name}` - get threads in a board
-  - `GET /api/boards/{board_name}/threads/{thread_id}` - get thread details
-  - `POST /api/boards/{board_name}/threads` - create a new thread
-  - `POST /api/boards/{board_name}/threads/{thread_id}/messages` - post a message to a thread
-- websockets:
-  - `/ws/chat/{channel}` - websocket connection for chat
-  - `/ws/board/{board}` - websocket connection for board
+- legacy servers: configure with `CHAT_PORT` and `BOARD_PORT`
 
 ## development
 
-### project status
-- [x] chat rooms, bot support, message board, knowledge base
-- [x] rest api with fastapi
-- [ ] improved bot personalities/tools, web interface, auth, notifications
-- [ ] svelte 4 web frontend (in progress)
+## examples
 
-### web frontend (svelte 4)
-- focused on chat and message board functionality
-- no authentication required
-- responsive design for desktop and mobile
-- built with bun for improved performance and developer experience
-- components:
-  - chat interface with channel selection
-  - message board with thread view
-  - basic settings configuration
-- connects to existing websocket servers
-- simple installation and setup
-- only dark mode. let there be dark.
+the `examples` directory contains sample code demonstrating various features:
 
-### testing
+- `llm_providers.py` - demonstrates using different llm providers
+- `bot_tools_demo.py` - shows how to use bot tools
+- `ole_scrappy_demo.py` - example of using the ole_scrappy bot
+- `ole_scrappy_tools_demo.py` - demonstrates ole_scrappy bot with tools
+
+run examples with:
 ```bash
-uv pip install pytest pytest-asyncio
-make test           # run tests
-make test-coverage  # coverage report
+python -m examples.llm_providers
+python -m examples.bot_tools_demo
+python -m examples.ole_scrappy_demo
+python -m examples.ole_scrappy_tools_demo
 ```
 
 ## license
