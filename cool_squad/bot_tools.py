@@ -172,6 +172,40 @@ class BotTools:
         self.storage.save_board(board)
         
         return f"Created new thread '{title}' on board '{board_name}'."
+    
+    async def create_knowledge_page(self, board_name: str, thread_index: int) -> str:
+        """
+        Create a knowledge page from a thread.
+        
+        Args:
+            board_name: Name of the board containing the thread
+            thread_index: Index of the thread to create a page from
+            
+        Returns:
+            Confirmation message with the page path
+        """
+        # Placeholder for future implementation
+        return "Knowledge base feature coming soon."
+    
+    async def update_knowledge_index(self) -> str:
+        """
+        Update the knowledge base index.
+        
+        Returns:
+            Confirmation message
+        """
+        # Placeholder for future implementation
+        return "Knowledge base feature coming soon."
+    
+    async def update_entire_knowledge_base(self) -> str:
+        """
+        Update the entire knowledge base from all threads.
+        
+        Returns:
+            Confirmation message
+        """
+        # Placeholder for future implementation
+        return "Knowledge base feature coming soon."
 
 # Tool definitions for bot function calling
 CHANNEL_TOOLS = [
@@ -307,6 +341,43 @@ BOARD_TOOLS = [
                 }
             },
             "required": ["board_name", "title", "content"]
+        }
+    }
+]
+
+KNOWLEDGE_TOOLS = [
+    {
+        "name": "create_knowledge_page",
+        "description": "Create a knowledge page from a thread (coming soon)",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "board_name": {
+                    "type": "string",
+                    "description": "Name of the board containing the thread"
+                },
+                "thread_index": {
+                    "type": "integer",
+                    "description": "Index of the thread to create a page from (0-based)"
+                }
+            },
+            "required": ["board_name", "thread_index"]
+        }
+    },
+    {
+        "name": "update_knowledge_index",
+        "description": "Update the knowledge base index (coming soon)",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+    {
+        "name": "update_entire_knowledge_base",
+        "description": "Update the entire knowledge base from all threads (coming soon)",
+        "parameters": {
+            "type": "object",
+            "properties": {}
         }
     }
 ] 

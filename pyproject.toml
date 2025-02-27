@@ -10,6 +10,7 @@ authors = [
 ]
 dependencies = [
     "openai",
+    "anthropic",
     "websockets",
     "asyncio",
     "pathlib",
@@ -25,8 +26,7 @@ build-backend = "hatchling.build"
 
 [project.scripts]
 cool-squad = "cool_squad.main:main"
-cool-squad-chat = "cool_squad.client:main"
-cool-squad-board = "cool_squad.board_client:main"
+cool-squad-cli = "cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["cool_squad"]

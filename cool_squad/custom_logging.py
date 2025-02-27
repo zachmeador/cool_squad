@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 
 from cool_squad.config import get_data_dir
+from cool_squad.token_budget import get_token_budget_tracker
 
 # Set up logger
 logger = logging.getLogger("llm_api")
@@ -113,12 +114,39 @@ def log_api_call(provider: str, model: str, messages: list, response: Any,
             }
         
         # Add usage if available
+        prompt_tokens = 0
+        completion_tokens = 0
+        total_tokens = 0
+        
         if hasattr(response, "usage"):
+            prompt_tokens = response.usage.prompt_tokens if hasattr(response.usage, "prompt_tokens") else 0
+            completion_tokens = response.usage.completion_tokens if hasattr(response.usage, "completion_tokens") else 0
+            total_tokens = response.usage.total_tokens if hasattr(response.usage, "total_tokens") else 0
+            
             log_entry["usage"] = {
-                "prompt_tokens": response.usage.prompt_tokens if hasattr(response.usage, "prompt_tokens") else None,
-                "completion_tokens": response.usage.completion_tokens if hasattr(response.usage, "completion_tokens") else None,
-                "total_tokens": response.usage.total_tokens if hasattr(response.usage, "total_tokens") else None,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
             }
+            
+            # Track token usage in the budget tracker
+            token_tracker = get_token_budget_tracker()
+            within_budget, message = token_tracker.add_usage(
+                provider=provider,
+                model=model,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens
+            )
+            
+            # Add budget status to log entry
+            log_entry["budget_status"] = {
+                "within_budget": within_budget,
+                "message": message
+            }
+            
+            # Log warning if over budget
+            if not within_budget:
+                logger.warning(f"Token budget exceeded: {message}")
         
         # Add tools if provided
         if tools:

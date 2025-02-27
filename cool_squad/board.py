@@ -244,13 +244,4 @@ class BoardServer:
             pass
         finally:
             # Unregister the connection
-            await self.unregister(websocket, board_name)
-
-async def main():
-    storage = Storage()
-    server = BoardServer(storage)
-    async with websockets.serve(server.handle_connection, "localhost", 8766):
-        await asyncio.Future()  # run forever
-
-if __name__ == "__main__":
-    asyncio.run(main()) 
+            await self.unregister(websocket, board_name) 

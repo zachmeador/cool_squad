@@ -4,6 +4,7 @@ import sys
 import os
 import dotenv
 import uvicorn
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from cool_squad.server import ChatServer
 from cool_squad.board import BoardServer
@@ -24,20 +25,28 @@ for api_key in ["ANTHROPIC_API_KEY", "COHERE_API_KEY", "REPLICATE_API_KEY"]:
     if os.getenv(api_key):
         os.environ[api_key] = os.getenv(api_key)
 
+# Initialize servers
+storage = Storage()
+chat_server = ChatServer()
+board_server = BoardServer(storage)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup code (if needed in the future)
+    yield
+    # Shutdown code (if needed in the future)
+    pass
+
 # Create FastAPI app
 app = FastAPI(
     title="cool_squad API",
     description="API for cool_squad chat and board server",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # Add API router
 app.include_router(api_router, prefix="/api")
-
-# Initialize servers
-storage = Storage()
-chat_server = ChatServer()
-board_server = BoardServer(storage)
 
 # WebSocket endpoints
 @app.websocket("/ws/chat/{channel}")
@@ -52,17 +61,8 @@ async def update_knowledge_base():
     """Update the knowledge base."""
     kb = KnowledgeBase(storage)
     knowledge_dir = await kb.update_knowledge_base()
-    print(f"Knowledge base updated at: {knowledge_dir}")
+    print(f"Knowledge base feature coming soon. Directory: {knowledge_dir}")
     return knowledge_dir
-
-async def run_knowledge_updater(update_interval: int):
-    """Periodically update the knowledge base."""
-    while True:
-        try:
-            await update_knowledge_base()
-        except Exception as e:
-            print(f"Error updating knowledge base: {e}")
-        await asyncio.sleep(update_interval)
 
 def main():
     parser = argparse.ArgumentParser(description="cool_squad server")
@@ -70,9 +70,6 @@ def main():
                         help="Host to bind the server to")
     parser.add_argument("--port", type=int, default=int(os.getenv("PORT", "8000")), 
                         help="Port for the FastAPI server")
-    parser.add_argument("--knowledge-update", type=int, 
-                        default=int(os.getenv("KNOWLEDGE_UPDATE_INTERVAL", "3600")), 
-                        help="Interval in seconds for knowledge base updates")
     parser.add_argument("--update-knowledge", action="store_true", 
                         help="Update the knowledge base and exit")
     args = parser.parse_args()
@@ -82,11 +79,7 @@ def main():
             asyncio.run(update_knowledge_base())
             return
         
-        # Run FastAPI server with knowledge updater
-        @app.on_event("startup")
-        async def startup_event():
-            asyncio.create_task(run_knowledge_updater(args.knowledge_update))
-        
+        # Run FastAPI server
         uvicorn.run(app, host=args.host, port=args.port)
     except KeyboardInterrupt:
         print("\nShutting down servers...")

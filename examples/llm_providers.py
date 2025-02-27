@@ -33,7 +33,7 @@ async def test_openai():
         bot = Bot(
             name="openai-bot",
             personality="you are a helpful assistant",
-            model="gpt-3.5-turbo"
+            model="gpt-4o-mini"
         )
         
         response = await bot.process_message(

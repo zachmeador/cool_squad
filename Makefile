@@ -1,74 +1,50 @@
-.PHONY: setup install run run-chat run-board run-api run-legacy update-kb clean lint format test test-coverage test-verbose web-setup web-dev web-build
+.PHONY: setup dev-install run dev stop update-kb run-cli test test-coverage test-verbose web-setup web-dev web-build help
 
-# Create virtual environment and install dependencies
+#
+# environment setup
+#
 setup:
 	uv venv
 	uv pip install -e .
 
-# Install dependencies only
-install:
-	uv pip install -r requirements.txt
-
-# Install development dependencies
 dev-install:
 	uv pip install -e ".[dev]"
 
-# Run the main server (FastAPI + legacy servers)
+#
+# server commands
+#
 run:
 	python -m cool_squad.main
 
-# Run only the FastAPI server (no legacy servers)
-run-api:
-	python -m cool_squad.main --no-legacy
+dev:
+	@echo "starting all servers in development mode..."
+	@mkdir -p logs
+	@python -m cool_squad.main > logs/server.log 2>&1 & echo $$! > .server.pid
+	@cd web && bun run dev > ../logs/web.log 2>&1 & echo $$! > ../.web.pid
+	@echo "servers started! check logs/ directory for output"
+	@echo "use 'make stop' to shut down all servers"
 
-# Run only the legacy servers
-run-legacy:
-	python -m cool_squad.main --legacy-only
+stop:
+	@echo "stopping all servers..."
+	@if [ -f .server.pid ]; then kill $$(cat .server.pid) 2>/dev/null || true; rm .server.pid; fi
+	@if [ -f .web.pid ]; then kill $$(cat .web.pid) 2>/dev/null || true; rm .web.pid; fi
+	@echo "all servers stopped"
 
-# Run the legacy chat server only
-run-chat-server:
-	python -m cool_squad.main --legacy-only --chat-only
+#
+# client commands
+#
+run-cli:
+	python cli.py
 
-# Run the legacy board server only
-run-board-server:
-	python -m cool_squad.main --legacy-only --board-only
-
-# Run the chat client
-run-chat:
-	python -m cool_squad.client \#welcome alice
-
-# Run the board client
-run-board:
-	python -m cool_squad.board_client general alice
-
-# Update the knowledge base
+#
+# knowledge base
+#
 update-kb:
 	python -m cool_squad.main --update-knowledge
 
-# Format code with black
-format:
-	black cool_squad tests
-
-# Sort imports with isort
-sort-imports:
-	isort cool_squad tests
-
-# Run all formatting
-lint: format sort-imports
-
-# Run tests
-test:
-	pytest tests
-
-# Run tests with coverage report
-test-coverage:
-	pytest --cov=cool_squad tests/ --cov-report=term-missing
-
-# Run tests with verbose output
-test-verbose:
-	pytest -v tests/
-
-# Web frontend commands
+#
+# web frontend
+#
 web-setup:
 	cd web && bun install
 
@@ -78,38 +54,74 @@ web-dev:
 web-build:
 	cd web && bun run build
 
-# Clean up generated files
+#
+# development tools
+#
+format:
+	black cool_squad tests
+
+sort-imports:
+	isort cool_squad tests
+
+lint: format sort-imports
+
+#
+# testing
+#
+test:
+	pytest tests
+
+test-coverage:
+	pytest --cov=cool_squad tests/ --cov-report=term-missing
+
+test-verbose:
+	pytest -v tests/
+
+#
+# cleanup
+#
 clean:
-	rm -rf build/
-	rm -rf dist/
-	rm -rf *.egg-info/
+	rm -rf build/ dist/ *.egg-info/
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
-	rm -rf web/build
-	rm -rf web/.svelte-kit
-	rm -rf web/node_modules
+	rm -rf web/build web/.svelte-kit web/node_modules
+	rm -rf logs/ .server.pid .web.pid
 
-# Show help
+#
+# help
+#
 help:
-	@echo "Available commands:"
-	@echo "  make setup          - Create virtual environment and install dependencies"
-	@echo "  make install        - Install dependencies only"
-	@echo "  make dev-install    - Install development dependencies"
-	@echo "  make run            - Run the main server (FastAPI + legacy servers)"
-	@echo "  make run-api        - Run only the FastAPI server (no legacy servers)"
-	@echo "  make run-legacy     - Run only the legacy servers"
-	@echo "  make run-chat-server - Run the legacy chat server only"
-	@echo "  make run-board-server - Run the legacy board server only"
-	@echo "  make run-chat       - Run the chat client"
-	@echo "  make run-board      - Run the board client"
-	@echo "  make update-kb      - Update the knowledge base"
-	@echo "  make web-setup      - Install web frontend dependencies"
-	@echo "  make web-dev        - Run web frontend development server"
-	@echo "  make web-build      - Build web frontend for production"
-	@echo "  make format         - Format code with black"
-	@echo "  make sort-imports   - Sort imports with isort"
-	@echo "  make lint           - Run all formatting"
-	@echo "  make test           - Run tests"
-	@echo "  make test-coverage  - Run tests with coverage report"
-	@echo "  make test-verbose   - Run tests with verbose output"
-	@echo "  make clean          - Clean up generated files" 
+	@echo "available commands:"
+	@echo ""
+	@echo "  environment:"
+	@echo "    make setup          - create virtual environment and install dependencies"
+	@echo "    make dev-install    - install development dependencies"
+	@echo ""
+	@echo "  servers:"
+	@echo "    make run            - run the main server (fastapi server)"
+	@echo "    make dev            - start all servers in development mode"
+	@echo "    make stop           - stop all running servers"
+	@echo ""
+	@echo "  clients:"
+	@echo "    make run-cli        - run the CLI client"
+	@echo ""
+	@echo "  knowledge base:"
+	@echo "    make update-kb      - update the knowledge base and exit"
+	@echo ""
+	@echo "  web frontend:"
+	@echo "    make web-setup      - install web frontend dependencies"
+	@echo "    make web-dev        - run web frontend development server"
+	@echo "    make web-build      - build web frontend for production"
+	@echo ""
+	@echo "  development:"
+	@echo "    make format         - format code with black"
+	@echo "    make sort-imports   - sort imports with isort"
+	@echo "    make lint           - run all formatting"
+	@echo ""
+	@echo "  testing:"
+	@echo "    make test           - run tests"
+	@echo "    make test-coverage  - run tests with coverage report"
+	@echo "    make test-verbose   - run tests with verbose output"
+	@echo ""
+	@echo "  cleanup:"
+	@echo "    make clean          - clean up generated files" 

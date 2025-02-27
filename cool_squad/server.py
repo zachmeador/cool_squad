@@ -121,12 +121,4 @@ class ChatServer:
         finally:
             # Unregister the connection
             if channel_name in self.connections:
-                self.connections[channel_name].discard(websocket)
-
-async def main():
-    server = ChatServer()
-    async with websockets.serve(server.handle_connection, "localhost", 8765):
-        await asyncio.Future()  # run forever
-
-if __name__ == "__main__":
-    asyncio.run(main()) 
+                self.connections[channel_name].discard(websocket) 

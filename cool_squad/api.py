@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from pydantic import BaseModel
 import asyncio
 import json
@@ -9,6 +9,7 @@ from cool_squad.core import Message, Channel
 from cool_squad.storage import Storage
 from cool_squad.server import ChatServer
 from cool_squad.board import BoardServer, Board, Thread
+from cool_squad.token_budget import get_token_budget_tracker, TokenBudget
 
 # Pydantic models for API
 class MessageModel(BaseModel):
@@ -38,6 +39,28 @@ class ThreadDetailModel(ThreadModel):
 class CreateThreadRequest(BaseModel):
     title: str
     first_message: MessageModel
+
+# Token budget models
+class TokenBudgetModel(BaseModel):
+    daily_limit: Optional[int] = None
+    monthly_limit: Optional[int] = None
+
+class ProviderBudgetModel(BaseModel):
+    provider: str
+    budget: TokenBudgetModel
+
+class ModelBudgetModel(BaseModel):
+    provider: str
+    model: str
+    budget: TokenBudgetModel
+
+class TokenUsageReportModel(BaseModel):
+    providers: Dict[str, Any]
+    daily_usage: Dict[str, Dict[str, int]]
+    monthly_usage: Dict[str, Dict[str, int]]
+    daily_reset: str
+    monthly_reset: str
+    budgets: Dict[str, Any]
 
 # Create API router
 api_router = APIRouter(tags=["api"])
@@ -247,4 +270,56 @@ async def post_thread_message(
         content=msg.content,
         author=msg.author,
         timestamp=msg.timestamp
-    ) 
+    )
+
+# Token budget endpoints
+@api_router.get("/token-budget", response_model=TokenUsageReportModel)
+async def get_token_usage():
+    """Get token usage report and budget information"""
+    token_tracker = get_token_budget_tracker()
+    return token_tracker.get_usage_report()
+
+@api_router.post("/token-budget/provider")
+async def set_provider_budget(budget: ProviderBudgetModel):
+    """Set budget for a provider"""
+    token_tracker = get_token_budget_tracker()
+    token_tracker.set_provider_budget(
+        provider=budget.provider,
+        daily_limit=budget.budget.daily_limit,
+        monthly_limit=budget.budget.monthly_limit
+    )
+    return {"status": "success", "message": f"Budget set for provider {budget.provider}"}
+
+@api_router.post("/token-budget/model")
+async def set_model_budget(budget: ModelBudgetModel):
+    """Set budget for a specific model"""
+    token_tracker = get_token_budget_tracker()
+    token_tracker.set_model_budget(
+        provider=budget.provider,
+        model=budget.model,
+        daily_limit=budget.budget.daily_limit,
+        monthly_limit=budget.budget.monthly_limit
+    )
+    return {"status": "success", "message": f"Budget set for model {budget.provider}/{budget.model}"}
+
+@api_router.delete("/token-budget/provider/{provider}")
+async def delete_provider_budget(provider: str):
+    """Delete budget for a provider"""
+    token_tracker = get_token_budget_tracker()
+    if provider in token_tracker.provider_budgets:
+        del token_tracker.provider_budgets[provider]
+        token_tracker.save_state()
+        return {"status": "success", "message": f"Budget deleted for provider {provider}"}
+    raise HTTPException(status_code=404, detail=f"No budget found for provider {provider}")
+
+@api_router.delete("/token-budget/model/{provider}/{model}")
+async def delete_model_budget(provider: str, model: str):
+    """Delete budget for a specific model"""
+    token_tracker = get_token_budget_tracker()
+    if provider in token_tracker.model_budgets and model in token_tracker.model_budgets[provider]:
+        del token_tracker.model_budgets[provider][model]
+        if not token_tracker.model_budgets[provider]:
+            del token_tracker.model_budgets[provider]
+        token_tracker.save_state()
+        return {"status": "success", "message": f"Budget deleted for model {provider}/{model}"}
+    raise HTTPException(status_code=404, detail=f"No budget found for model {provider}/{model}") 

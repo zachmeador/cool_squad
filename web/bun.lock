@@ -4,6 +4,7 @@
     "": {
       "name": "web",
       "dependencies": {
+        "marked": "^15.0.7",
         "svelte-websocket-store": "^1.1.34",
       },
       "devDependencies": {
@@ -171,6 +172,8 @@
     "locate-character": ["locate-character@3.0.0", "", {}, "sha512-SW13ws7BjaeJ6p7Q6CO2nchbYEc3X3J6WrmTTDto7yMPqVSZTUyY5Tjbid+Ab8gLnATtygYtiDIJGQRRn2ZOiA=="],
 
     "magic-string": ["magic-string@0.30.17", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0" } }, "sha512-sNPKHvyjVf7gyjwS4xGTaW/mCnF8wnjtifKBEhxfZ7E/S8tQ0rssrwGNn6q8JH/ohItJfSQp9mBtQYuTlH5QnA=="],
+
+    "marked": ["marked@15.0.7", "", { "bin": { "marked": "bin/marked.js" } }, "sha512-dgLIeKGLx5FwziAnsk4ONoGwHwGPJzselimvlVskE9XLN4Orv9u2VA3GWw/lYUqjfA0rUT/6fqKwfZJapP9BEg=="],
 
     "mf-hosting-cloudflare": ["mf-hosting-cloudflare@1.0.7", "", {}, "sha512-c44UGOTMKGQXn8YOH7Jh1eDssoZMtgsKy61pBTeW6tkk5gnM3RyoN7wF06YTN/szlvozsg3k1ZH9aSfMeSOUWQ=="],
 

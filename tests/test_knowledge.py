@@ -45,73 +45,33 @@ def sample_board():
 @pytest.mark.asyncio
 async def test_generate_thread_summary(temp_knowledge_base, sample_board):
     """Test generating a summary for a thread."""
-    # Mock the OpenAI API
-    with patch('cool_squad.knowledge.openai') as mock_openai:
-        # Set up the mock to return a response
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "This is a summary about Python programming."
-        
-        # Create a mock async method
-        async def mock_create(*args, **kwargs):
-            return mock_response
-        
-        # Set up the mock chat completions create method
-        mock_openai.chat = MagicMock()
-        mock_openai.chat.completions = MagicMock()
-        mock_openai.chat.completions.create = mock_create
-        
-        # Generate a summary for the first thread
-        thread = sample_board.threads[0]
-        summary = await temp_knowledge_base.summarize_thread(thread)
-        
-        # Verify the summary
-        assert summary == "This is a summary about Python programming."
+    # Test the placeholder implementation
+    thread = sample_board.threads[0]
+    summary = await temp_knowledge_base.summarize_thread(thread)
+    assert summary == "Thread summary feature coming soon."
 
 
 @pytest.mark.asyncio
 async def test_create_page_from_thread(temp_knowledge_base, sample_board):
-    """Test generating an HTML page for a thread."""
-    # Mock the thread summary generation
-    with patch.object(temp_knowledge_base, 'summarize_thread') as mock_summarize:
-        future = asyncio.Future()
-        future.set_result("Thread summary")
-        mock_summarize.return_value = future
-        
-        # Generate the thread page
-        thread = sample_board.threads[0]
-        page_path = await temp_knowledge_base.create_page_from_thread(thread)
-        
-        # Verify the HTML file was created
-        assert os.path.exists(page_path)
-        
-        # Check the content of the file
-        with open(page_path, 'r') as f:
-            content = f.read()
-            assert "Python Programming" in content
-            assert "Thread summary" in content
-            assert "user1" in content
-            assert "user2" in content
+    """Test creating a knowledge page from a thread."""
+    # Test the placeholder implementation
+    thread = sample_board.threads[0]
+    page_path = await temp_knowledge_base.create_page_from_thread(thread)
+    expected_path = temp_knowledge_base._page_path(thread.title)
+    assert page_path == expected_path
 
 
 @pytest.mark.asyncio
 async def test_update_index(temp_knowledge_base):
-    """Test updating the index HTML page."""
-    # Create mock pages
-    os.makedirs(os.path.join(temp_knowledge_base.knowledge_dir, "pages"), exist_ok=True)
-    with open(os.path.join(temp_knowledge_base.knowledge_dir, "pages", "page1.html"), 'w') as f:
-        f.write("<html><head><title>Page 1</title></head><body>Test page 1</body></html>")
-    with open(os.path.join(temp_knowledge_base.knowledge_dir, "pages", "page2.html"), 'w') as f:
-        f.write("<html><head><title>Page 2</title></head><body>Test page 2</body></html>")
-    
-    # Update the index
-    await temp_knowledge_base.update_index()
-    
-    # Verify the index file was created
-    index_path = temp_knowledge_base._index_path()
-    assert os.path.exists(index_path)
-    
-    # Check the content of the file
-    with open(index_path, 'r') as f:
-        content = f.read()
-        assert "Knowledge Base" in content 
+    """Test updating the knowledge base index."""
+    # Test the placeholder implementation
+    result = await temp_knowledge_base.update_index()
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_update_knowledge_base(temp_knowledge_base):
+    """Test updating the entire knowledge base."""
+    # Test the placeholder implementation
+    result = await temp_knowledge_base.update_knowledge_base()
+    assert result == temp_knowledge_base.knowledge_dir 

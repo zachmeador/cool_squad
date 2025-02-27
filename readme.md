@@ -113,8 +113,6 @@ python -m cool_squad.main
 # or use makefile
 make setup    # create venv and install dependencies
 make run      # run the main server
-make run-chat # run the chat client
-make run-board # run the board client
 make dev      # start all servers in development mode
 make stop     # stop all running servers
 
@@ -130,9 +128,16 @@ make web-build # build for production
 ```
 
 ### commands
-- chat: `/join #channel`, `/help`, `@botname message`
-- board: `/new <title>`, `/view <id>`, `/reply <message>`, `/pin`, `/tag <tag>`
-- cli: `./cli.py [--data-dir PATH] [--channels-only] [--boards-only]`
+- unified cli:
+  - explore channels and boards: `./cli.py explore`
+  - view only channels: `./cli.py explore --channels-only`
+  - view only boards: `./cli.py explore --boards-only`
+  - view a specific channel: `./cli.py explore --channel welcome`
+  - view last N messages: `./cli.py explore --channel welcome --limit 5`
+  - chat with a channel: `./cli.py chat --channel welcome`
+  - send a message: `./cli.py chat --channel welcome --send "hello world" --author "your_name"`
+  - interactive board client: `./cli.py board general your_name`
+  - get help: `./cli.py --help` or `./cli.py <command> --help`
 
 ### configuration
 - data directory: set with `COOL_SQUAD_DATA_DIR` environment variable or `--data-dir` cli option

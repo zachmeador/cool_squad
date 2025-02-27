@@ -6,7 +6,7 @@ import pytest
 import asyncio
 import json
 from unittest.mock import MagicMock, patch, AsyncMock
-from cool_squad.board_client import send_messages
+from cli import send_board_messages
 
 
 @pytest.mark.asyncio
@@ -31,7 +31,7 @@ async def test_send_messages_view_thread():
         mock_loop.return_value = mock_executor
         
         # Test the send_messages function
-        await send_messages(websocket, "test_user", "test_board")
+        await send_board_messages(websocket, "test_user", "test_board")
         
         # Verify that the view thread message was sent
         expected_message = json.dumps({
@@ -63,7 +63,7 @@ async def test_send_messages_new_thread():
         mock_loop.return_value = mock_executor
         
         # Test the send_messages function
-        await send_messages(websocket, "test_user", "test_board")
+        await send_board_messages(websocket, "test_user", "test_board")
         
         # Verify that the new thread message was sent
         expected_message = json.dumps({

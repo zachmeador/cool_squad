@@ -9,6 +9,7 @@
     bots
   } from '$lib/stores/chat';
   import { chatConnected } from '$lib/stores/websocket';
+  import { marked } from 'marked';
   
   let messageInput = '';
   let channelInput = '';
@@ -40,11 +41,41 @@
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
   
+  function getInitials(name: string) {
+    return name.substring(0, 2).toLowerCase();
+  }
+  
+  function getAvatarColor(name: string) {
+    // Generate a consistent color based on the name
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    // Convert to hex color
+    const c = (hash & 0x00FFFFFF)
+      .toString(16)
+      .toUpperCase();
+    
+    return "#" + "00000".substring(0, 6 - c.length) + c;
+  }
+  
+  function isBot(name: string) {
+    return $bots.includes(name);
+  }
+  
   onMount(() => {
     // Join the welcome channel by default
     if (!$currentChannel) {
       joinChannel('welcome');
     }
+    
+    // Configure marked for security
+    marked.setOptions({
+      breaks: true,
+      gfm: true,
+      sanitize: true
+    });
   });
 </script>
 
@@ -54,9 +85,9 @@
       <h3>channels</h3>
       <div class="connection-status">
         {#if $chatConnected}
-          <span class="status connected">●</span>
+          <span class="status connected" title="connected">●</span>
         {:else}
-          <span class="status disconnected">●</span>
+          <span class="status disconnected" title="disconnected">●</span>
         {/if}
       </div>
     </div>
@@ -88,7 +119,12 @@
       <h3>bots</h3>
       <div class="bot-items">
         {#each $bots as bot}
-          <div class="bot-item">@{bot}</div>
+          <div class="bot-item" style="background-color: {getAvatarColor(bot)}20;">
+            <div class="bot-avatar" style="background-color: {getAvatarColor(bot)};">
+              {getInitials(bot)}
+            </div>
+            <span>@{bot}</span>
+          </div>
         {/each}
       </div>
     </div>
@@ -107,15 +143,23 @@
       {#if $currentChannelMessages.length === 0}
         <div class="empty-state">
           <p>no messages yet. start the conversation!</p>
+          <p class="hint">try mentioning a bot with @botname</p>
         </div>
       {:else}
         {#each $currentChannelMessages as message}
-          <div class="message" class:bot-message={message.isBot}>
-            <div class="message-header">
-              <span class="sender">{message.sender}</span>
-              <span class="timestamp">{formatTimestamp(message.timestamp)}</span>
+          <div class="message" class:bot-message={isBot(message.sender)}>
+            <div class="message-avatar" style="background-color: {getAvatarColor(message.sender)};">
+              {getInitials(message.sender)}
             </div>
-            <div class="message-content">{message.content}</div>
+            <div class="message-bubble">
+              <div class="message-header">
+                <span class="sender">{message.sender}</span>
+                <span class="timestamp">{formatTimestamp(message.timestamp)}</span>
+              </div>
+              <div class="message-content">
+                {@html marked(message.content)}
+              </div>
+            </div>
           </div>
         {/each}
       {/if}
@@ -126,11 +170,14 @@
         <input 
           type="text" 
           bind:value={messageInput} 
-          placeholder={$currentChannel ? "type a message..." : "join a channel first"} 
+          placeholder={$currentChannel ? "type a message... (markdown supported)" : "join a channel first"} 
           disabled={!$currentChannel || !$chatConnected}
         />
         <button type="submit" disabled={!$currentChannel || !$chatConnected}>send</button>
       </form>
+      {#if !$chatConnected}
+        <div class="connection-warning">disconnected from server. reconnecting...</div>
+      {/if}
     </div>
   </main>
 </div>
@@ -140,6 +187,8 @@
     display: flex;
     height: calc(100vh - 120px);
     overflow: hidden;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   }
   
   .sidebar {
@@ -191,6 +240,7 @@
     color: var(--text-primary);
     cursor: pointer;
     margin-bottom: 0.25rem;
+    transition: background-color 0.2s;
   }
   
   .channel-item:hover {
@@ -228,15 +278,34 @@
   
   .bot-items {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 0.5rem;
   }
   
   .bot-item {
-    background-color: var(--bg-tertiary);
-    padding: 0.25rem 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
     border-radius: 4px;
     font-size: 0.875rem;
+    transition: transform 0.2s;
+  }
+  
+  .bot-item:hover {
+    transform: translateX(2px);
+  }
+  
+  .bot-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    color: white;
+    font-weight: bold;
   }
   
   .chat-main {
@@ -244,6 +313,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    background-color: var(--bg-primary);
   }
   
   .chat-header {
@@ -267,19 +337,51 @@
     justify-content: center;
     height: 100%;
     color: var(--text-secondary);
+    text-align: center;
+  }
+  
+  .hint {
+    font-size: 0.875rem;
+    margin-top: 0.5rem;
+    opacity: 0.7;
   }
   
   .message {
-    background-color: var(--bg-secondary);
-    padding: 0.75rem;
-    border-radius: 8px;
-    max-width: 80%;
+    display: flex;
+    gap: 0.75rem;
+    max-width: 85%;
     align-self: flex-start;
   }
   
+  .message-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.875rem;
+    color: white;
+    font-weight: bold;
+    flex-shrink: 0;
+  }
+  
+  .message-bubble {
+    background-color: var(--bg-secondary);
+    padding: 0.75rem;
+    border-radius: 8px;
+    border-top-left-radius: 2px;
+    flex: 1;
+  }
+  
   .bot-message {
-    background-color: var(--bg-tertiary);
     align-self: flex-end;
+  }
+  
+  .bot-message .message-bubble {
+    background-color: var(--bg-tertiary);
+    border-top-left-radius: 8px;
+    border-top-right-radius: 2px;
   }
   
   .message-header {
@@ -300,6 +402,30 @@
   
   .message-content {
     word-break: break-word;
+    line-height: 1.4;
+  }
+  
+  .message-content :global(p) {
+    margin: 0 0 0.5rem 0;
+  }
+  
+  .message-content :global(p:last-child) {
+    margin-bottom: 0;
+  }
+  
+  .message-content :global(pre) {
+    background-color: var(--bg-primary);
+    padding: 0.5rem;
+    border-radius: 4px;
+    overflow-x: auto;
+    font-size: 0.875rem;
+  }
+  
+  .message-content :global(code) {
+    background-color: var(--bg-primary);
+    padding: 0.125rem 0.25rem;
+    border-radius: 3px;
+    font-size: 0.875rem;
   }
   
   .message-input {
@@ -314,6 +440,20 @@
   
   .message-input input {
     flex: 1;
+    padding: 0.75rem;
+    border-radius: 8px;
+  }
+  
+  .message-input button {
+    padding: 0.75rem 1.25rem;
+    border-radius: 8px;
+  }
+  
+  .connection-warning {
+    color: var(--error);
+    font-size: 0.875rem;
+    margin-top: 0.5rem;
+    text-align: center;
   }
   
   @media (max-width: 768px) {
@@ -324,7 +464,8 @@
     
     .sidebar {
       width: 100%;
-      height: 200px;
+      height: auto;
+      max-height: 200px;
       border-right: none;
       border-bottom: 1px solid var(--border);
     }
@@ -337,6 +478,11 @@
     
     .channel-item {
       white-space: nowrap;
+    }
+    
+    .bot-items {
+      flex-direction: row;
+      flex-wrap: wrap;
     }
   }
 </style> 
