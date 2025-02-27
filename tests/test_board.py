@@ -6,9 +6,9 @@ import pytest
 import asyncio
 import json
 from unittest.mock import MagicMock, patch, AsyncMock
-from cool_squad.board import BoardServer
-from cool_squad.core import Message, Board, Thread
-from cool_squad.storage import Storage
+from cool_squad.server.board import BoardServer
+from cool_squad.core.models import Message, Board, Thread
+from cool_squad.storage.storage import Storage
 
 
 @pytest.fixture

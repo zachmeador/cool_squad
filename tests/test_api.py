@@ -5,8 +5,8 @@ import shutil
 import tempfile
 
 from cool_squad.main import app
-from cool_squad.storage import Storage
-from cool_squad.core import Channel, Message
+from cool_squad.storage.storage import Storage
+from cool_squad.core.models import Channel, Message
 
 @pytest.fixture
 def test_client():

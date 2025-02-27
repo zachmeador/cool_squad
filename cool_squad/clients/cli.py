@@ -13,9 +13,9 @@ import websockets
 from datetime import datetime
 from pathlib import Path
 
-from cool_squad.storage import Storage
-from cool_squad.config import ensure_data_dir, get_data_dir
-from cool_squad.core import Message
+from cool_squad.storage.storage import Storage
+from cool_squad.core.config import ensure_data_dir, get_data_dir
+from cool_squad.core.models import Message
 
 
 def format_timestamp(timestamp):

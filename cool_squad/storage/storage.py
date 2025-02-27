@@ -2,8 +2,8 @@ import json
 import os
 from pathlib import Path
 from typing import Dict, List
-from cool_squad.core import Channel, Message, Board, Thread
-from cool_squad.config import get_data_dir
+from cool_squad.core.models import Channel, Message, Board, Thread
+from cool_squad.core.config import get_data_dir
 
 class Storage:
     def __init__(self, data_dir: str = None):

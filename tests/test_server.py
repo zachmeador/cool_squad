@@ -7,8 +7,8 @@ import asyncio
 import json
 import websockets
 from unittest.mock import MagicMock, patch
-from cool_squad.server import ChatServer
-from cool_squad.core import Message, Channel
+from cool_squad.server.chat import ChatServer
+from cool_squad.core.models import Message, Channel
 
 
 @pytest.fixture

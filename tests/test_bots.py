@@ -5,8 +5,8 @@ Tests for the bot functionality of cool_squad.
 import pytest
 import asyncio
 from unittest.mock import MagicMock, patch
-from cool_squad.bots import Bot
-from cool_squad.core import Message
+from cool_squad.bots.base import Bot
+from cool_squad.core.models import Message
 
 
 @pytest.fixture
@@ -34,7 +34,7 @@ async def test_bot_initialization():
 async def test_process_message(test_bot):
     """Test that a bot can process a message and generate a response."""
     # Mock the OpenAI API
-    with patch('cool_squad.bots.openai') as mock_openai:
+    with patch('cool_squad.bots.base.client') as mock_openai:
         # Set up the mock to return a response
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -46,8 +46,6 @@ async def test_process_message(test_bot):
             return mock_response
         
         # Set up the mock chat completions create method
-        mock_openai.chat = MagicMock()
-        mock_openai.chat.completions = MagicMock()
         mock_openai.chat.completions.create = mock_create
         
         # Create a test message
@@ -71,7 +69,7 @@ async def test_process_message(test_bot):
 async def test_memory_management(test_bot):
     """Test that a bot can manage its memory correctly."""
     # Mock the OpenAI API
-    with patch('cool_squad.bots.openai') as mock_openai:
+    with patch('cool_squad.bots.base.client') as mock_openai:
         # Set up the mock to return a response
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -83,8 +81,6 @@ async def test_memory_management(test_bot):
             return mock_response
         
         # Set up the mock chat completions create method
-        mock_openai.chat = MagicMock()
-        mock_openai.chat.completions = MagicMock()
         mock_openai.chat.completions.create = mock_create
         
         # Create test messages
@@ -111,7 +107,7 @@ async def test_memory_management(test_bot):
 async def test_different_channels(test_bot):
     """Test that a bot can handle messages from different channels."""
     # Mock the OpenAI API
-    with patch('cool_squad.bots.openai') as mock_openai:
+    with patch('cool_squad.bots.base.client') as mock_openai:
         # Set up the mock to return a response
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -123,8 +119,6 @@ async def test_different_channels(test_bot):
             return mock_response
         
         # Set up the mock chat completions create method
-        mock_openai.chat = MagicMock()
-        mock_openai.chat.completions = MagicMock()
         mock_openai.chat.completions.create = mock_create
         
         # Process messages from different channels

@@ -7,9 +7,9 @@ import os
 import tempfile
 import asyncio
 from unittest.mock import MagicMock, patch
-from cool_squad.knowledge import KnowledgeBase
-from cool_squad.core import Message, Thread, Board
-from cool_squad.storage import Storage
+from cool_squad.core.knowledge import KnowledgeBase
+from cool_squad.core.models import Message, Thread, Board
+from cool_squad.storage.storage import Storage
 
 
 @pytest.fixture

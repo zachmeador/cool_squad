@@ -6,7 +6,7 @@ import pytest
 import asyncio
 import json
 from unittest.mock import MagicMock, patch, AsyncMock
-from cli import send_board_messages
+from cool_squad.clients.cli import send_board_messages
 
 
 @pytest.mark.asyncio

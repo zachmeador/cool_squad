@@ -2,8 +2,8 @@ from typing import List, Dict, Any, Optional
 import json
 import os
 from pathlib import Path
-from cool_squad.core import Message, Thread, Board
-from cool_squad.storage import Storage
+from cool_squad.core.models import Message, Thread, Board
+from cool_squad.storage.storage import Storage
 
 class BotTools:
     """Collection of tools for bots to interact with chat and message boards."""

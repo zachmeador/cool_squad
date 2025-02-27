@@ -25,7 +25,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project.scripts]
-coolsquad = "cli:main"
+coolsquad = "cool_squad.clients.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["cool_squad"]

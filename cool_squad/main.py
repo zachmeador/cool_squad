@@ -6,11 +6,13 @@ import dotenv
 import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from cool_squad.server import ChatServer
-from cool_squad.board import BoardServer
-from cool_squad.storage import Storage
-from cool_squad.knowledge import KnowledgeBase
-from cool_squad.api import api_router
+
+# Updated imports for new module structure
+from cool_squad.server.chat import ChatServer
+from cool_squad.server.board import BoardServer
+from cool_squad.storage.storage import Storage
+from cool_squad.core.knowledge import KnowledgeBase
+from cool_squad.api.routes import api_router
 
 # Load environment variables from .env file
 dotenv.load_dotenv()

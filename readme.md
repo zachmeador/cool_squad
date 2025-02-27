@@ -147,6 +147,19 @@ make web-build # build for production
 
 ## development
 
+### testing
+run the test suite to ensure everything is working correctly:
+```bash
+# run all tests
+make test
+
+# run tests with verbose output
+make test-verbose
+
+# run tests with coverage report
+make test-coverage
+```
+
 ## examples
 
 the `examples` directory contains sample code demonstrating various features:

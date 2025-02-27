@@ -1,8 +1,8 @@
 import pytest
 import asyncio
 from unittest.mock import MagicMock, patch
-from cool_squad.core import Message, Channel, Board, Thread
-from cool_squad.bot_tools import BotTools
+from cool_squad.core.models import Message, Channel, Board, Thread
+from cool_squad.bots.tools import BotTools
 
 @pytest.fixture
 def mock_storage():

@@ -3,10 +3,10 @@ from typing import List, Dict, Any, Optional
 import os
 from openai import AsyncOpenAI  # Import AsyncOpenAI instead of regular openai
 import json
-from cool_squad.core import Message
-from cool_squad.bot_tools import BotTools, CHANNEL_TOOLS, BOARD_TOOLS
-from cool_squad.custom_logging import log_api_call
-from cool_squad.token_budget import get_token_budget_tracker
+from cool_squad.core.models import Message
+from cool_squad.bots.tools import BotTools, CHANNEL_TOOLS, BOARD_TOOLS
+from cool_squad.utils.logging import log_api_call
+from cool_squad.utils.token_budget import get_token_budget_tracker
 
 # Initialize the OpenAI client
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))

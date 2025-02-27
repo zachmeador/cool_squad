@@ -12,7 +12,7 @@ import os
 from datetime import datetime, timedelta
 from pathlib import Path
 import logging
-from cool_squad.config import get_data_dir
+from cool_squad.core.config import get_data_dir
 
 logger = logging.getLogger("token_budget")
 logger.setLevel(logging.INFO)

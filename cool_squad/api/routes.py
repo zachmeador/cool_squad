@@ -5,26 +5,15 @@ import asyncio
 import json
 import time
 
-from cool_squad.core import Message, Channel
-from cool_squad.storage import Storage
-from cool_squad.server import ChatServer
-from cool_squad.board import BoardServer, Board, Thread
-from cool_squad.token_budget import get_token_budget_tracker, TokenBudget
+# Updated imports for new module structure
+from cool_squad.core.models import Message, Channel
+from cool_squad.storage.storage import Storage
+from cool_squad.server.chat import ChatServer
+from cool_squad.server.board import BoardServer, Board, Thread
+from cool_squad.utils.token_budget import get_token_budget_tracker, TokenBudget
+from cool_squad.api.models import MessageModel, ChannelModel, BoardModel
 
-# Pydantic models for API
-class MessageModel(BaseModel):
-    content: str
-    author: str
-    timestamp: Optional[float] = None
-
-class ChannelModel(BaseModel):
-    name: str
-    messages: List[MessageModel]
-
-class BoardModel(BaseModel):
-    name: str
-    description: str
-
+# Additional Pydantic models for API
 class ThreadModel(BaseModel):
     id: str
     title: str
@@ -117,6 +106,9 @@ async def post_message(
     """Post a message to a channel"""
     if channel_name not in chat_server.channels:
         chat_server.channels[channel_name] = chat_server.storage.load_channel(channel_name)
+    
+    # Set the channel field from the path parameter
+    message.channel = channel_name
     
     msg = Message(
         content=message.content,

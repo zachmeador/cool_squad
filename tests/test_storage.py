@@ -5,8 +5,8 @@ Tests for the storage functionality of cool_squad.
 import os
 import tempfile
 import pytest
-from cool_squad.core import Message, Channel, Board, Thread
-from cool_squad.storage import Storage
+from cool_squad.core.models import Message, Channel, Board, Thread
+from cool_squad.storage.storage import Storage
 
 
 @pytest.fixture

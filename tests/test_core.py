@@ -3,7 +3,7 @@ Tests for the core components of cool_squad.
 """
 
 import pytest
-from cool_squad.core import Message, Channel, Thread, Board
+from cool_squad.core.models import Message, Channel, Thread, Board
 
 
 def test_message_creation():

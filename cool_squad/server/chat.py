@@ -1,9 +1,9 @@
 import asyncio
 import json
 from typing import Dict, Set, List
-from cool_squad.core import Message, Channel
-from cool_squad.storage import Storage
-from cool_squad.bots import create_default_bots, Bot
+from cool_squad.core.models import Message, Channel
+from cool_squad.storage.storage import Storage
+from cool_squad.bots.base import create_default_bots, Bot
 
 class ChatServer:
     def __init__(self, storage: Storage = None):

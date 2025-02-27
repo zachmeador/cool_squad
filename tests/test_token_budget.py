@@ -8,7 +8,7 @@ import json
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
 
-from cool_squad.token_budget import (
+from cool_squad.utils.token_budget import (
     ModelUsage,
     ProviderUsage,
     TokenBudget,
@@ -99,7 +99,7 @@ def mock_data_dir(tmp_path):
     return str(data_dir)
 
 
-@patch("cool_squad.token_budget.get_data_dir")
+@patch("cool_squad.utils.token_budget.get_data_dir")
 def test_token_budget_tracker_init(mock_get_data_dir, mock_data_dir):
     """test that token budget tracker initializes correctly"""
     mock_get_data_dir.return_value = mock_data_dir
@@ -112,7 +112,7 @@ def test_token_budget_tracker_init(mock_get_data_dir, mock_data_dir):
     assert isinstance(tracker.monthly_reset_time, datetime)
 
 
-@patch("cool_squad.token_budget.get_data_dir")
+@patch("cool_squad.utils.token_budget.get_data_dir")
 def test_token_budget_tracker_add_usage(mock_get_data_dir, mock_data_dir):
     """test that token budget tracker can add usage"""
     mock_get_data_dir.return_value = mock_data_dir
@@ -133,7 +133,7 @@ def test_token_budget_tracker_add_usage(mock_get_data_dir, mock_data_dir):
     assert tracker.monthly_usage["openai"]["gpt-4"] == 150
 
 
-@patch("cool_squad.token_budget.get_data_dir")
+@patch("cool_squad.utils.token_budget.get_data_dir")
 def test_token_budget_tracker_budget_limits(mock_get_data_dir, mock_data_dir):
     """test that token budget tracker enforces budget limits"""
     mock_get_data_dir.return_value = mock_data_dir
@@ -165,7 +165,7 @@ def test_token_budget_tracker_budget_limits(mock_get_data_dir, mock_data_dir):
     assert "Model claude-3" in message
 
 
-@patch("cool_squad.token_budget.get_data_dir")
+@patch("cool_squad.utils.token_budget.get_data_dir")
 def test_token_budget_tracker_reset_periods(mock_get_data_dir, mock_data_dir):
     """test that token budget tracker resets usage counters correctly"""
     mock_get_data_dir.return_value = mock_data_dir
@@ -196,7 +196,7 @@ def test_token_budget_tracker_reset_periods(mock_get_data_dir, mock_data_dir):
     assert "openai" not in tracker.monthly_usage
 
 
-@patch("cool_squad.token_budget.get_data_dir")
+@patch("cool_squad.utils.token_budget.get_data_dir")
 def test_token_budget_tracker_save_load_state(mock_get_data_dir, mock_data_dir):
     """test that token budget tracker can save and load state"""
     mock_get_data_dir.return_value = mock_data_dir
@@ -236,7 +236,7 @@ def test_token_budget_tracker_save_load_state(mock_get_data_dir, mock_data_dir):
     assert tracker2.monthly_usage["openai"]["gpt-4"] == 150
 
 
-@patch("cool_squad.token_budget.get_data_dir")
+@patch("cool_squad.utils.token_budget.get_data_dir")
 def test_token_budget_tracker_save_state_error(mock_get_data_dir, mock_data_dir):
     """test that token budget tracker handles save state errors gracefully"""
     mock_get_data_dir.return_value = mock_data_dir
@@ -249,7 +249,7 @@ def test_token_budget_tracker_save_state_error(mock_get_data_dir, mock_data_dir)
         mock_get_path.return_value = os.path.join(mock_data_dir, "nonexistent_dir", "token_budget_state.json")
         
         # try to save state, which should fail
-        with patch("cool_squad.token_budget.logger") as mock_logger:
+        with patch("cool_squad.utils.token_budget.logger") as mock_logger:
             tracker.save_state()
             
             # check that the error was logged
@@ -260,8 +260,8 @@ def test_token_budget_tracker_save_state_error(mock_get_data_dir, mock_data_dir)
 def test_get_token_budget_tracker():
     """test that get_token_budget_tracker returns a singleton instance"""
     # reset the singleton
-    import cool_squad.token_budget
-    cool_squad.token_budget._token_budget_tracker = None
+    import cool_squad.utils.token_budget
+    cool_squad.utils.token_budget._token_budget_tracker = None
     
     # get the tracker
     tracker1 = get_token_budget_tracker()
@@ -272,7 +272,7 @@ def test_get_token_budget_tracker():
     assert tracker1 is tracker2
 
 
-@patch("cool_squad.token_budget.get_data_dir")
+@patch("cool_squad.utils.token_budget.get_data_dir")
 def test_token_budget_tracker_get_usage_report(mock_get_data_dir, mock_data_dir):
     """test that token budget tracker can generate a usage report"""
     mock_get_data_dir.return_value = mock_data_dir
@@ -306,7 +306,7 @@ def test_token_budget_tracker_get_usage_report(mock_get_data_dir, mock_data_dir)
     assert report["budgets"]["models"]["anthropic"]["claude-3"]["monthly"] == 10000
 
 
-@patch("cool_squad.token_budget.get_data_dir")
+@patch("cool_squad.utils.token_budget.get_data_dir")
 def test_token_budget_tracker_load_state_error(mock_get_data_dir, mock_data_dir):
     """test that token budget tracker handles load state errors gracefully"""
     mock_get_data_dir.return_value = mock_data_dir
@@ -317,7 +317,7 @@ def test_token_budget_tracker_load_state_error(mock_get_data_dir, mock_data_dir)
         f.write("invalid json")
     
     # create a tracker that should try to load the invalid state
-    with patch("cool_squad.token_budget.logger") as mock_logger:
+    with patch("cool_squad.utils.token_budget.logger") as mock_logger:
         tracker = TokenBudgetTracker()
         
         # check that the error was logged

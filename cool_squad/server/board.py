@@ -3,8 +3,8 @@ import json
 import time
 import uuid
 from typing import Dict, Set, List, Optional
-from cool_squad.core import Message
-from cool_squad.storage import Storage
+from cool_squad.core.models import Message
+from cool_squad.storage.storage import Storage
 
 class Thread:
     def __init__(self, id: str, title: str, author: str, created_at: float = None, 

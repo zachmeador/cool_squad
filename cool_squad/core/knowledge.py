@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import asyncio
-from cool_squad.core import Message, Channel, Thread, Board
-from cool_squad.storage import Storage
+from cool_squad.core.models import Message, Channel, Thread, Board
+from cool_squad.storage.storage import Storage
 
 class KnowledgeBase:
     def __init__(self, storage: Storage = None):

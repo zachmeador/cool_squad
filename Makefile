@@ -28,6 +28,7 @@ stop:
 	@echo "stopping all servers..."
 	@if [ -f .server.pid ]; then kill $$(cat .server.pid) 2>/dev/null || true; rm .server.pid; fi
 	@if [ -f .web.pid ]; then kill $$(cat .web.pid) 2>/dev/null || true; rm .web.pid; fi
+	@pkill -f "next dev" 2>/dev/null || true
 	@echo "all servers stopped"
 
 #
@@ -84,7 +85,7 @@ clean:
 	rm -rf build/ dist/ *.egg-info/
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
-	rm -rf web/build web/.svelte-kit web/node_modules
+	rm -rf web/.next web/node_modules
 	rm -rf logs/ .server.pid .web.pid
 
 #
