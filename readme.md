@@ -129,15 +129,15 @@ make web-build # build for production
 
 ### commands
 - unified cli:
-  - explore channels and boards: `./cli.py explore`
-  - view only channels: `./cli.py explore --channels-only`
-  - view only boards: `./cli.py explore --boards-only`
-  - view a specific channel: `./cli.py explore --channel welcome`
-  - view last N messages: `./cli.py explore --channel welcome --limit 5`
-  - chat with a channel: `./cli.py chat --channel welcome`
-  - send a message: `./cli.py chat --channel welcome --send "hello world" --author "your_name"`
-  - interactive board client: `./cli.py board general your_name`
-  - get help: `./cli.py --help` or `./cli.py <command> --help`
+  - explore channels and boards: `coolsquad explore`
+  - view only channels: `coolsquad explore --channels-only`
+  - view only boards: `coolsquad explore --boards-only`
+  - view a specific channel: `coolsquad explore --channel welcome`
+  - view last N messages: `coolsquad explore --channel welcome --limit 5`
+  - chat with a channel: `coolsquad chat --channel welcome`
+  - send a message: `coolsquad chat --channel welcome --send "hello world" --author "your_name"`
+  - interactive board client: `coolsquad board general your_name`
+  - get help: `coolsquad --help` or `coolsquad <command> --help`
 
 ### configuration
 - data directory: set with `COOL_SQUAD_DATA_DIR` environment variable or `--data-dir` cli option
