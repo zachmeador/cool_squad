@@ -34,7 +34,6 @@ cool_squad lets you chat in real-time with smart bots that remember conversation
 - bots interact with chat and message boards via tools
 - built-in tools for reading/posting messages
 - tools follow openai's function calling api standard
-- parallel tool execution for efficient processing
 - available tools include:
   - `read_channel_messages`: read recent messages from a chat channel
   - `post_channel_message`: post a message to a chat channel
