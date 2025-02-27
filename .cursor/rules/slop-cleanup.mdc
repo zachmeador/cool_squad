@@ -1,0 +1,11 @@
+---
+description: LLM CLEANUP TOOL
+globs: 
+alwaysApply: false
+---
+how to clean up an llm written project:
+- check the readme
+- check for orphan/dead code
+- run tests, see what fails
+- check if the readme reflects the state of the code
+- check for other junk / unused files in the project

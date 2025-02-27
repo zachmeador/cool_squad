@@ -1,0 +1,7 @@
+---
+description: rules around git usage
+globs: 
+alwaysApply: false
+---
+- never push to remotes
+- don't run git in interactive mode

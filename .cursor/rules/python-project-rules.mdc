@@ -1,0 +1,5 @@
+---
+description: doing project, environment, and dependency stuff
+globs: 
+---
+use python uv for everything. it's a new era. `uv pip` instead of `pip`.

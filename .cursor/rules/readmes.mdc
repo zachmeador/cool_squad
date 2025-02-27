@@ -1,0 +1,11 @@
+---
+description: maintaining the docs
+globs: readme.md
+---
+maintain the following structure in the readme.md:
+
+1. name and 1 sentence description of project
+2. table of contents
+3. the components of the app 
+4. example workflows of the most important functionality
+5. mit license, briefly stated
