@@ -1,4 +1,4 @@
-# cool_squad
+# cool_squad (v0.1.0)
 
 chat with your robot friends :)
 
