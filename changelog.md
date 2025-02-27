@@ -12,6 +12,9 @@ all notable changes to this project will be documented in this file.
 - rest api for accessing all functionality
 - web frontend
 
+### enhancements
+- add provider support to bot configuration for multiple llm providers
+
 ### fixes
 - update bot names in test_handle_bot_mentions test
 

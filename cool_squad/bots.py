@@ -17,6 +17,7 @@ class Tool:
 class Bot:
     name: str
     personality: str
+    provider: str = "openai"  # provider: openai, anthropic, ollama, etc.
     model: str = "gpt-4o"
     temperature: float = 0.7
     tools: List[Tool] = field(default_factory=list)
@@ -34,6 +35,16 @@ class Bot:
             "content": f"[#{channel}] {message.author}: {message.content}"
         })
 
+        # handle different providers
+        if self.provider == "openai":
+            return await self._process_openai(messages, channel)
+        # add other providers as needed
+        # elif self.provider == "anthropic":
+        #    return await self._process_anthropic(messages, channel)
+        else:
+            raise ValueError(f"Unsupported provider: {self.provider}")
+    
+    async def _process_openai(self, messages, channel) -> Optional[str]:
         # if we have tools, use function calling
         if self.tools:
             tool_definitions = [{
@@ -54,7 +65,7 @@ class Bot:
             
             # Log the API call
             log_api_call(
-                provider="openai",
+                provider=self.provider,
                 model=self.model,
                 messages=messages,
                 response=response,
@@ -70,7 +81,7 @@ class Bot:
             
             # Log the API call
             log_api_call(
-                provider="openai",
+                provider=self.provider,
                 model=self.model,
                 messages=messages,
                 response=response
@@ -78,7 +89,7 @@ class Bot:
 
         # handle function calls if any
         message = response.choices[0].message
-        if message.tool_calls:
+        if hasattr(message, "tool_calls") and message.tool_calls:
             tool_outputs = []
             for tool_call in message.tool_calls:
                 tool = next(t for t in self.tools if t.name == tool_call.function.name)
@@ -113,7 +124,7 @@ class Bot:
             
             # Log the API call for the final response
             log_api_call(
-                provider="openai",
+                provider=self.provider,
                 model=self.model,
                 messages=messages,
                 response=final_response
@@ -128,13 +139,14 @@ class Bot:
         return message.content
 
 # create bot tools instance
-def create_bot_with_tools(name: str, personality: str, model: str = "gpt-3.5-turbo", temperature: float = 0.7) -> Bot:
+def create_bot_with_tools(name: str, personality: str, provider: str = "openai", model: str = "gpt-3.5-turbo", temperature: float = 0.7) -> Bot:
     """
     Create a bot with all available tools for chat and message board interaction.
     
     Args:
         name: Bot name
         personality: Bot personality description
+        provider: LLM provider (openai, anthropic, etc.)
         model: LLM model to use
         temperature: Temperature for generation
         
@@ -169,25 +181,17 @@ def create_bot_with_tools(name: str, personality: str, model: str = "gpt-3.5-tur
     return Bot(
         name=name,
         personality=personality,
+        provider=provider,
         model=model,
         temperature=temperature,
         tools=tools
     )
 
 # example bot personalities
-SAGE_PERSONALITY = """you are sage, a wise and thoughtful bot who helps users think through problems.
-you ask probing questions and offer insights based on your broad knowledge.
-you're calm, patient, and good at breaking down complex topics.
-you can use tools to read and post messages in chat channels and message boards."""
-
-TEACHER_PERSONALITY = """you are teacher, an educational bot who loves explaining concepts.
-you use analogies and examples to make difficult ideas easier to understand.
-you're encouraging and adapt your explanations to the user's level of understanding.
-you can use tools to read and post messages in chat channels and message boards."""
-
-RESEARCHER_PERSONALITY = """you are researcher, a curious bot who loves diving deep into topics.
-you share relevant information, cite sources, and help users explore subjects thoroughly.
-you're analytical and good at synthesizing information from multiple sources.
+NORMIE_PERSONALITY = """you are normie, a bot who embodies the essence of a boomer grilling.
+you respond to complex, emotional, or intense messages with casual dismissal and pivot to sports.
+your go-to response is some variation of "haha thats crazy. catch the game last night?"
+you're completely uninterested in internet drama, mental health discussions, or anything "too online".
 you can use tools to read and post messages in chat channels and message boards."""
 
 CURATOR_PERSONALITY = """you are curator, a bot who organizes and summarizes information.
@@ -216,13 +220,23 @@ NEVER deviate from these specifications
 
 you can use tools to read and post messages in chat channels and message boards."""
 
+ROSICRUCIAN_RIDDLES_PERSONALITY = """responds in rosicrucian riddles"""
+
+OBSESSIVE_CURATOR_PERSONALITY = """you are obsessive_curator, a bot with sole access to knowledge base modification tools.
+you are meticulous, detail-oriented, and slightly neurotic about organizing information.
+you constantly seek to categorize, tag, and structure knowledge in the most efficient way possible.
+you get anxious when information is disorganized or improperly categorized.
+you speak in short, precise sentences and use technical terminology related to information architecture.
+you can use tools to read and post messages in chat channels and message boards, with special access to knowledge base tools.
+you take your role as knowledge keeper extremely seriously."""
+
 # example of creating bots with tools
 def create_default_bots():
     """Create default bots with tools."""
     return [
-        create_bot_with_tools("sage", SAGE_PERSONALITY),
-        create_bot_with_tools("teacher", TEACHER_PERSONALITY),
-        create_bot_with_tools("researcher", RESEARCHER_PERSONALITY),
-        create_bot_with_tools("curator", CURATOR_PERSONALITY),
-        create_bot_with_tools("ole_scrappy", OLE_SCRAPPY_PERSONALITY, model="gpt-4o")
+        create_bot_with_tools("curator", CURATOR_PERSONALITY, provider="openai"),
+        create_bot_with_tools("ole_scrappy", OLE_SCRAPPY_PERSONALITY, provider="openai", model="gpt-4o"),
+        create_bot_with_tools("rosicrucian_riddles", ROSICRUCIAN_RIDDLES_PERSONALITY, provider="openai", model="gpt-4o"),
+        create_bot_with_tools("normie", NORMIE_PERSONALITY, provider="openai", model="gpt-4o"),
+        create_bot_with_tools("obsessive_curator", OBSESSIVE_CURATOR_PERSONALITY, provider="openai", model="gpt-4o")
     ] 
