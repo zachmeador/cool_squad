@@ -94,19 +94,21 @@ async def test_handle_bot_mentions(chat_server):
         bot.process_message = MagicMock(return_value=future)
     
     # Create a message mentioning a bot
-    message = Message(content="Hey @sage, how are you?", author="test_user")
+    message = Message(content="Hey @curator, how are you?", author="test_user")
     
     # Handle bot mentions
     responses = await chat_server.handle_bot_mentions(message, "test_channel")
     
     # Verify the bot was called and a response was generated
     assert len(responses) == 1
-    assert responses[0].content == "Response from sage"
-    assert responses[0].author == "sage"
+    assert responses[0].content == "Response from curator"
+    assert responses[0].author == "curator"
     
     # Test mentioning multiple bots
-    message = Message(content="@sage and @teacher, help me!", author="test_user")
+    message = Message(content="@curator and @normie, help me!", author="test_user")
     responses = await chat_server.handle_bot_mentions(message, "test_channel")
     
-    # Verify both bots were called
-    assert len(responses) == 2 
+    # Verify both bots were called and responses were generated
+    assert len(responses) == 2
+    assert any(r.author == "curator" for r in responses)
+    assert any(r.author == "normie" for r in responses) 
