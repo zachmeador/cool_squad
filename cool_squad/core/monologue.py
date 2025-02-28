@@ -30,12 +30,14 @@ class InternalMonologue:
     thoughts: List[Thought] = field(default_factory=list)
     tool_considerations: Dict[str, ToolConsideration] = field(default_factory=dict)
     max_thoughts: int = 50
+    last_interaction_time: float = field(default_factory=time.time)
     debug_mode: bool = False
     
     def add_thought(self, content: str, category: str = "general") -> None:
         """Add a thought to the internal monologue."""
         thought = Thought(content=content, category=category)
         self.thoughts.append(thought)
+        self.last_interaction_time = time.time()
         
         # Trim if exceeding max thoughts
         if len(self.thoughts) > self.max_thoughts:
@@ -81,13 +83,15 @@ class InternalMonologue:
             "thoughts": [{"content": t.content, "category": t.category, "timestamp": t.timestamp} 
                          for t in self.thoughts],
             "tool_considerations": {name: {"reasoning": tc.reasoning, "relevance_score": tc.relevance_score, "timestamp": tc.timestamp} 
-                                   for name, tc in self.tool_considerations.items()}
+                                   for name, tc in self.tool_considerations.items()},
+            "max_thoughts": self.max_thoughts,
+            "last_interaction_time": self.last_interaction_time
         }
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'InternalMonologue':
         """Create from dictionary."""
-        monologue = cls()
+        monologue = cls(max_thoughts=data.get("max_thoughts", 50))
         
         for t in data.get("thoughts", []):
             thought = Thought(
@@ -105,4 +109,10 @@ class InternalMonologue:
                 timestamp=tc.get("timestamp", time.time())
             )
             
-        return monologue 
+        monologue.last_interaction_time = data.get("last_interaction_time", time.time())
+        
+        return monologue
+    
+    def has_recent_interaction(self, threshold_seconds: int = 300) -> bool:
+        """Check if there has been a recent interaction within the threshold."""
+        return (time.time() - self.last_interaction_time) < threshold_seconds 

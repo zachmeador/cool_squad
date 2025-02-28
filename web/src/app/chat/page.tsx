@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useUser } from '@/lib/user-context';
-import { useChatWebSocket } from '@/lib/websocket';
+// import { useChatWebSocket } from '@/lib/websocket';
+import { useChatSSE } from '@/lib/sse';
 import { getChannels } from '@/lib/api';
 
 export default function ChatPage() {
@@ -13,7 +14,8 @@ export default function ChatPage() {
   const [channelInput, setChannelInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  const { connected, messages, sendMessage } = useChatWebSocket(
+  // Replace WebSocket with SSE
+  const { connected, messages, sendMessage } = useChatSSE(
     currentChannel,
     username || 'guest'
   );

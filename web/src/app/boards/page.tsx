@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useUser } from '@/lib/user-context';
-import { useBoardWebSocket } from '@/lib/websocket';
+import { useBoardSSE } from '@/lib/sse';
 import { getBoards } from '@/lib/api';
 import { Thread } from '@/lib/api';
 
@@ -22,7 +22,7 @@ export default function BoardsPage() {
     viewThread, 
     createThread, 
     replyToThread 
-  } = useBoardWebSocket(
+  } = useBoardSSE(
     currentBoard,
     username || 'guest'
   );

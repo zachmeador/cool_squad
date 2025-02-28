@@ -11,13 +11,13 @@ authors = [
 dependencies = [
     "openai",
     "anthropic",
-    "websockets",
     "asyncio",
     "pathlib",
     "python-dotenv",
     "fastapi",
     "uvicorn[standard]",
     "pydantic",
+    "sse-starlette",
 ]
 
 [build-system]

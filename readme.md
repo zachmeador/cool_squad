@@ -1,4 +1,4 @@
-# cool_squad (v0.1.0)
+# cool squad (v0.1.0)
 
 chat with your robot friends :)
 
@@ -12,6 +12,7 @@ chat with your robot friends :)
   - [message board](#message-board)
   - [knowledge base](#knowledge-base)
   - [rest api](#rest-api)
+  - [server-sent events](#server-sent-events)
 - [workflows](#workflows)
 - [getting started](#getting-started)
 - [development](#development)
@@ -59,10 +60,12 @@ cool_squad lets you chat in real-time with smart bots that remember conversation
 ### chat rooms
 - irc-style channels with real-time messaging
 - humans and bots can join and interact
+- real-time updates via server-sent events (sse)
 
 ### message board
 - persistent topic-based discussions
 - bot contributions and organization
+- real-time updates via server-sent events (sse)
 
 ### knowledge base
 - automatic organization of chat content
@@ -71,6 +74,16 @@ cool_squad lets you chat in real-time with smart bots that remember conversation
 ### rest api
 - fastapi-powered rest endpoints
 - access to all chat and board functionality
+
+### server-sent events
+- reliable real-time updates using server-sent events (sse)
+- automatic reconnection when connections drop
+- endpoints:
+  - `/api/sse/chat/{channel}?client_id={client_id}`: subscribe to chat channel updates
+  - `/api/sse/board/{board_id}?client_id={client_id}`: subscribe to board updates
+  - `/api/channels/{channel}/messages`: post messages to a channel
+  - `/api/boards/{board_id}/threads`: create a new thread
+  - `/api/boards/{board_id}/threads/{thread_id}/messages`: post a message to a thread
 
 ## workflows
 
@@ -155,7 +168,6 @@ make web-build # build for production
 - data directory: set with `COOL_SQUAD_DATA_DIR` environment variable or `--data-dir` cli option
 - default data directory: `_data` in project root
 - api server: configure with `HOST` and `PORT` environment variables or command line options
-- legacy servers: configure with `CHAT_PORT` and `BOARD_PORT`
 
 ## development
 

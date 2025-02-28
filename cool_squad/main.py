@@ -5,14 +5,18 @@ import os
 import dotenv
 import uvicorn
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI
+import random
 
 # Updated imports for new module structure
 from cool_squad.server.chat import ChatServer
 from cool_squad.server.board import BoardServer
 from cool_squad.storage.storage import Storage
 from cool_squad.core.knowledge import KnowledgeBase
+from cool_squad.core.models import Message
 from cool_squad.api.routes import api_router
+from cool_squad.api.sse import router as sse_router, broadcast_chat_message
+from cool_squad.core.autonomous import get_autonomous_thinking_manager
 
 # Load environment variables from .env file
 dotenv.load_dotenv()
@@ -32,12 +36,62 @@ storage = Storage()
 chat_server = ChatServer()
 board_server = BoardServer(storage)
 
+# Initialize autonomous thinking manager
+autonomous_manager = get_autonomous_thinking_manager()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup code (if needed in the future)
+    # Register bots with autonomous thinking manager
+    autonomous_manager.register_bots(chat_server.bots)
+    
+    # Add context providers
+    autonomous_manager.add_context_provider(lambda: {
+        "available_channels": list(chat_server.channels.keys()) + storage.list_channels(),
+        "active_channels": [name for name, conns in chat_server.connections.items() if conns]
+    })
+    
+    # Set message callback to post to channels
+    async def message_callback(bot_name, content, context):
+        # Pick an active channel if available, otherwise pick any channel
+        active_channels = context.get("active_channels", [])
+        available_channels = context.get("available_channels", [])
+        
+        if active_channels:
+            channel_name = random.choice(active_channels)
+        elif available_channels:
+            channel_name = random.choice(available_channels)
+        else:
+            # Default to "general" if no channels exist
+            channel_name = "general"
+        
+        # Create and add message
+        message = Message(content=content, author=bot_name)
+        
+        # Add to storage
+        channel_data = storage.load_channel(channel_name)
+        if not channel_data:
+            from cool_squad.core.models import Channel
+            channel_data = Channel(name=channel_name)
+        
+        channel_data.add_message(message)
+        storage.save_channel(channel_data)
+        
+        # Broadcast via SSE
+        await broadcast_chat_message(channel_name, {
+            "content": content,
+            "author": bot_name,
+            "timestamp": message.timestamp
+        })
+    
+    autonomous_manager.set_message_callback(message_callback)
+    
+    # Start autonomous thinking
+    await autonomous_manager.start()
+    
     yield
-    # Shutdown code (if needed in the future)
-    pass
+    
+    # Stop autonomous thinking on shutdown
+    await autonomous_manager.stop()
 
 # Create FastAPI app
 app = FastAPI(
@@ -49,15 +103,6 @@ app = FastAPI(
 
 # Add API router
 app.include_router(api_router, prefix="/api")
-
-# WebSocket endpoints
-@app.websocket("/ws/chat/{channel}")
-async def websocket_chat_endpoint(websocket: WebSocket, channel: str):
-    await chat_server.handle_connection(websocket, channel)
-
-@app.websocket("/ws/board/{board}")
-async def websocket_board_endpoint(websocket: WebSocket, board: str):
-    await board_server.handle_connection(websocket, board)
 
 async def update_knowledge_base():
     """Update the knowledge base."""

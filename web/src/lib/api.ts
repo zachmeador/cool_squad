@@ -31,6 +31,36 @@ export interface ThreadDetail extends Thread {
   messages: Message[];
 }
 
+// new interfaces for monologue
+export interface Thought {
+  content: string;
+  category: string;
+  timestamp: number;
+}
+
+export interface ToolConsideration {
+  tool_name: string;
+  reasoning: string;
+  relevance_score: number;
+  timestamp: number;
+}
+
+export interface Monologue {
+  thoughts: Thought[];
+  tool_considerations: Record<string, ToolConsideration>;
+  max_thoughts: number;
+  last_interaction_time: number;
+}
+
+export interface BotInfo {
+  name: string;
+  personality: string;
+  provider: string;
+  model: string;
+  use_monologue: boolean;
+  debug_mode: boolean;
+}
+
 // api base url
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
@@ -195,6 +225,143 @@ export async function postThreadMessage(
     return {
       ...message,
       timestamp: new Date().toISOString()
+    };
+  }
+}
+
+// monologue api functions
+export async function getBots(): Promise<string[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/bots`);
+    if (!response.ok) throw new Error('failed to fetch bots');
+    return response.json();
+  } catch (error) {
+    console.error('error fetching bots:', error);
+    return ['curator', 'ole_scrappy', 'normie'];
+  }
+}
+
+export async function getBotInfo(botName: string): Promise<BotInfo> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/bots/${botName}`);
+    if (!response.ok) throw new Error(`failed to fetch bot info for ${botName}`);
+    return response.json();
+  } catch (error) {
+    console.error(`error fetching bot info for ${botName}:`, error);
+    return {
+      name: botName,
+      personality: 'mock personality',
+      provider: 'openai',
+      model: 'gpt-4o',
+      use_monologue: true,
+      debug_mode: false
+    };
+  }
+}
+
+export async function getBotMonologue(botName: string): Promise<Monologue> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/bots/${botName}/monologue`);
+    if (!response.ok) throw new Error(`failed to fetch monologue for ${botName}`);
+    return response.json();
+  } catch (error) {
+    console.error(`error fetching monologue for ${botName}:`, error);
+    return {
+      thoughts: [
+        {
+          content: 'this is mock thought data.',
+          category: 'general',
+          timestamp: Date.now() / 1000
+        }
+      ],
+      tool_considerations: {},
+      max_thoughts: 50,
+      last_interaction_time: Date.now() / 1000
+    };
+  }
+}
+
+export async function updateBotMonologueSettings(
+  botName: string,
+  settings: {
+    use_monologue?: boolean;
+    debug_mode?: boolean;
+    max_thoughts?: number;
+  }
+): Promise<{ status: string; message: string }> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/bots/${botName}/monologue/settings`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    });
+    if (!response.ok) throw new Error(`failed to update monologue settings for ${botName}`);
+    return response.json();
+  } catch (error) {
+    console.error(`error updating monologue settings for ${botName}:`, error);
+    return {
+      status: 'error',
+      message: `failed to update settings: ${error}`
+    };
+  }
+}
+
+export async function addBotThought(
+  botName: string,
+  thought: {
+    content: string;
+    category?: string;
+  }
+): Promise<{ status: string; message: string }> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/bots/${botName}/monologue/thoughts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(thought),
+    });
+    if (!response.ok) throw new Error(`failed to add thought for ${botName}`);
+    return response.json();
+  } catch (error) {
+    console.error(`error adding thought for ${botName}:`, error);
+    return {
+      status: 'error',
+      message: `failed to add thought: ${error}`
+    };
+  }
+}
+
+export async function clearBotThoughts(
+  botName: string
+): Promise<{ status: string; message: string }> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/bots/${botName}/monologue/thoughts`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error(`failed to clear thoughts for ${botName}`);
+    return response.json();
+  } catch (error) {
+    console.error(`error clearing thoughts for ${botName}:`, error);
+    return {
+      status: 'error',
+      message: `failed to clear thoughts: ${error}`
+    };
+  }
+}
+
+export async function clearBotToolConsiderations(
+  botName: string
+): Promise<{ status: string; message: string }> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/bots/${botName}/monologue/tool-considerations`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error(`failed to clear tool considerations for ${botName}`);
+    return response.json();
+  } catch (error) {
+    console.error(`error clearing tool considerations for ${botName}:`, error);
+    return {
+      status: 'error',
+      message: `failed to clear tool considerations: ${error}`
     };
   }
 } 

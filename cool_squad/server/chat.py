@@ -58,9 +58,9 @@ class ChatServer:
             self.channels[channel_name].add_message(response)
             self.storage.save_channel(self.channels[channel_name])
             
-            await self.broadcast(channel_name, {
-                "type": "message",
-                "channel": channel_name,
+            # Broadcast via SSE
+            from cool_squad.api.sse import broadcast_chat_message
+            await broadcast_chat_message(channel_name, {
                 "content": response.content,
                 "author": response.author,
                 "timestamp": response.timestamp

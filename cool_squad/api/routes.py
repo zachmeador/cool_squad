@@ -1,17 +1,23 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel
 import asyncio
 import json
 import time
+import uuid
 
 # Updated imports for new module structure
-from cool_squad.core.models import Message, Channel
+from cool_squad.core.models import Message, Channel, Board, Thread
 from cool_squad.storage.storage import Storage
 from cool_squad.server.chat import ChatServer
-from cool_squad.server.board import BoardServer, Board, Thread
+from cool_squad.server.board import BoardServer
 from cool_squad.utils.token_budget import get_token_budget_tracker, TokenBudget
-from cool_squad.api.models import MessageModel, ChannelModel, BoardModel
+from cool_squad.api.models import (
+    MessageModel, ChannelModel, BoardModel, 
+    ThoughtModel, ToolConsiderationModel, MonologueModel, BotMonologueModel
+)
+from cool_squad.api import sse
 
 # Additional Pydantic models for API
 class ThreadModel(BaseModel):
@@ -54,9 +60,15 @@ class TokenUsageReportModel(BaseModel):
 # Create API router
 api_router = APIRouter(tags=["api"])
 
+# Include SSE router
+api_router.include_router(sse.router, prefix="/sse", tags=["sse"])
+
+# Initialize storage
+storage = Storage()
+
 # Dependency to get storage
 def get_storage():
-    return Storage()
+    return storage
 
 # Dependency to get chat server
 def get_chat_server():
@@ -119,10 +131,9 @@ async def post_message(
     chat_server.channels[channel_name].add_message(msg)
     chat_server.storage.save_channel(chat_server.channels[channel_name])
     
-    # Broadcast to websocket clients
-    asyncio.create_task(chat_server.broadcast(channel_name, {
-        "type": "message",
-        "channel": channel_name,
+    # Broadcast via SSE
+    from cool_squad.api.sse import broadcast_chat_message
+    asyncio.create_task(broadcast_chat_message(channel_name, {
         "content": msg.content,
         "author": msg.author,
         "timestamp": msg.timestamp
@@ -213,8 +224,9 @@ async def create_thread(
     thread = board.create_thread(title=request.title, first_message=msg)
     board_server.storage.save_board(board)
     
-    # Broadcast to websocket clients
-    asyncio.create_task(board_server.broadcast_board_update(board_name))
+    # Broadcast via SSE
+    from cool_squad.api.sse import broadcast_board_update
+    asyncio.create_task(broadcast_board_update(board_name))
     
     # Convert to ThreadModel for response
     return ThreadModel(
@@ -255,8 +267,9 @@ async def post_thread_message(
     thread.add_message(msg)
     board_server.storage.save_board(board)
     
-    # Broadcast to websocket clients
-    asyncio.create_task(board_server.broadcast_thread_update(board_name, thread_id))
+    # Broadcast via SSE
+    from cool_squad.api.sse import broadcast_thread_update
+    asyncio.create_task(broadcast_thread_update(board_name, thread_id))
     
     return MessageModel(
         content=msg.content,
@@ -314,4 +327,145 @@ async def delete_model_budget(provider: str, model: str):
             del token_tracker.model_budgets[provider]
         token_tracker.save_state()
         return {"status": "success", "message": f"Budget deleted for model {provider}/{model}"}
-    raise HTTPException(status_code=404, detail=f"No budget found for model {provider}/{model}") 
+    raise HTTPException(status_code=404, detail=f"No budget found for model {provider}/{model}")
+
+# Monologue API endpoints
+@api_router.get("/bots", response_model=List[str])
+async def get_bots(chat_server: ChatServer = Depends(get_chat_server)):
+    """Get list of all bots"""
+    return [bot.name for bot in chat_server.bots]
+
+@api_router.get("/bots/{bot_name}", response_model=Dict[str, Any])
+async def get_bot_info(bot_name: str, chat_server: ChatServer = Depends(get_chat_server)):
+    """Get information about a specific bot"""
+    bot = next((b for b in chat_server.bots if b.name == bot_name), None)
+    if not bot:
+        raise HTTPException(status_code=404, detail=f"Bot {bot_name} not found")
+    
+    return {
+        "name": bot.name,
+        "personality": bot.personality,
+        "provider": bot.provider,
+        "model": bot.model,
+        "use_monologue": bot.use_monologue,
+        "debug_mode": bot.debug_mode
+    }
+
+@api_router.get("/bots/{bot_name}/monologue", response_model=MonologueModel)
+async def get_bot_monologue(bot_name: str, chat_server: ChatServer = Depends(get_chat_server)):
+    """Get a bot's internal monologue"""
+    bot = next((b for b in chat_server.bots if b.name == bot_name), None)
+    if not bot:
+        raise HTTPException(status_code=404, detail=f"Bot {bot_name} not found")
+    
+    if not bot.use_monologue:
+        raise HTTPException(status_code=400, detail=f"Bot {bot_name} does not use monologue")
+    
+    # Convert monologue to API model
+    thoughts = [
+        ThoughtModel(
+            content=t.content,
+            category=t.category,
+            timestamp=t.timestamp
+        ) for t in bot.monologue.thoughts
+    ]
+    
+    tool_considerations = {
+        name: ToolConsiderationModel(
+            tool_name=tc.tool_name,
+            reasoning=tc.reasoning,
+            relevance_score=tc.relevance_score,
+            timestamp=tc.timestamp
+        ) for name, tc in bot.monologue.tool_considerations.items()
+    }
+    
+    return MonologueModel(
+        thoughts=thoughts,
+        tool_considerations=tool_considerations,
+        max_thoughts=bot.monologue.max_thoughts,
+        last_interaction_time=bot.monologue.last_interaction_time
+    )
+
+@api_router.patch("/bots/{bot_name}/monologue/settings")
+async def update_bot_monologue_settings(
+    bot_name: str, 
+    settings: Dict[str, Any],
+    chat_server: ChatServer = Depends(get_chat_server)
+):
+    """Update a bot's monologue settings"""
+    bot = next((b for b in chat_server.bots if b.name == bot_name), None)
+    if not bot:
+        raise HTTPException(status_code=404, detail=f"Bot {bot_name} not found")
+    
+    # Update settings
+    if "use_monologue" in settings:
+        bot.use_monologue = settings["use_monologue"]
+    
+    if "debug_mode" in settings:
+        bot.debug_mode = settings["debug_mode"]
+    
+    if "max_thoughts" in settings and bot.use_monologue:
+        bot.monologue.max_thoughts = settings["max_thoughts"]
+    
+    return {"status": "success", "message": f"Updated monologue settings for {bot_name}"}
+
+@api_router.post("/bots/{bot_name}/monologue/thoughts")
+async def add_bot_thought(
+    bot_name: str, 
+    thought: Dict[str, str],
+    chat_server: ChatServer = Depends(get_chat_server)
+):
+    """Add a thought to a bot's monologue"""
+    bot = next((b for b in chat_server.bots if b.name == bot_name), None)
+    if not bot:
+        raise HTTPException(status_code=404, detail=f"Bot {bot_name} not found")
+    
+    if not bot.use_monologue:
+        raise HTTPException(status_code=400, detail=f"Bot {bot_name} does not use monologue")
+    
+    # Add thought
+    content = thought.get("content", "")
+    category = thought.get("category", "general")
+    
+    if not content:
+        raise HTTPException(status_code=400, detail="Thought content is required")
+    
+    bot.monologue.add_thought(content, category)
+    
+    return {"status": "success", "message": f"Added thought to {bot_name}'s monologue"}
+
+@api_router.delete("/bots/{bot_name}/monologue/thoughts")
+async def clear_bot_thoughts(
+    bot_name: str,
+    chat_server: ChatServer = Depends(get_chat_server)
+):
+    """Clear a bot's thoughts"""
+    bot = next((b for b in chat_server.bots if b.name == bot_name), None)
+    if not bot:
+        raise HTTPException(status_code=404, detail=f"Bot {bot_name} not found")
+    
+    if not bot.use_monologue:
+        raise HTTPException(status_code=400, detail=f"Bot {bot_name} does not use monologue")
+    
+    # Clear thoughts
+    bot.monologue.thoughts = []
+    
+    return {"status": "success", "message": f"Cleared thoughts for {bot_name}"}
+
+@api_router.delete("/bots/{bot_name}/monologue/tool-considerations")
+async def clear_bot_tool_considerations(
+    bot_name: str,
+    chat_server: ChatServer = Depends(get_chat_server)
+):
+    """Clear a bot's tool considerations"""
+    bot = next((b for b in chat_server.bots if b.name == bot_name), None)
+    if not bot:
+        raise HTTPException(status_code=404, detail=f"Bot {bot_name} not found")
+    
+    if not bot.use_monologue:
+        raise HTTPException(status_code=400, detail=f"Bot {bot_name} does not use monologue")
+    
+    # Clear tool considerations
+    bot.monologue.clear_tool_considerations()
+    
+    return {"status": "success", "message": f"Cleared tool considerations for {bot_name}"} 
