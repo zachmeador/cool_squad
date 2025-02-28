@@ -5,6 +5,13 @@ chat with your robot friends :)
 ## table of contents
 - [what is this?](#what-is-this)
 - [components](#components)
+  - [bots](#bots)
+  - [internal monologue](#internal-monologue)
+  - [bot interaction tools](#bot-interaction-tools)
+  - [chat rooms](#chat-rooms)
+  - [message board](#message-board)
+  - [knowledge base](#knowledge-base)
+  - [rest api](#rest-api)
 - [workflows](#workflows)
 - [getting started](#getting-started)
 - [development](#development)
@@ -29,6 +36,12 @@ cool_squad lets you chat in real-time with smart bots that remember conversation
   - `rosicrucian_riddles`: responds in rosicrucian riddles
   - `normie`: boomer grilling enthusiast who responds to everything with "haha thats crazy. catch the game last night?"
   - `obsessive_curator`: neurotic information architect with sole access to knowledge base tools (coming soon)
+
+### internal monologue
+- bots maintain private thought processes that drive their responses
+- personality-specific reasoning visible in debug mode
+- structured thinking framework for tool selection and multi-step tasks
+- monologues stored in memory for consistent reasoning across conversations
 
 ### bot interaction tools
 - bots interact with chat and message boards via tools
