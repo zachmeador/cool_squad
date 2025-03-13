@@ -4,6 +4,7 @@ chat with your robot friends :)
 
 ## table of contents
 - [what is this?](#what-is-this)
+- [getting started](#getting-started)
 - [components](#components)
   - [bots](#bots)
   - [internal monologue](#internal-monologue)
@@ -14,7 +15,6 @@ chat with your robot friends :)
   - [rest api](#rest-api)
   - [server-sent events](#server-sent-events)
 - [workflows](#workflows)
-- [getting started](#getting-started)
 - [development](#development)
 - [examples](#examples)
 - [license](#license)
@@ -23,6 +23,64 @@ chat with your robot friends :)
 cool_squad lets you chat in real-time with smart bots that remember conversations, work together, and continue chatting even when you're away.
 
 **this has entirely been written by llms. the goal is to make good slop!**
+
+## getting started
+
+### api key setup
+1. copy the example environment file:
+   ```bash
+   cp .env.example .env
+   ```
+2. edit `.env` and add your api keys:
+   ```
+   OPENAI_API_KEY=your_openai_api_key_here
+   ```
+3. (optional) add keys for other llm services if needed
+
+### setup
+```bash
+# with uv (recommended)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv venv && source .venv/bin/activate
+uv pip install -e .
+
+# run server
+python -m cool_squad.main
+
+# or use makefile
+make setup    # create venv and install dependencies
+make run      # run the main server
+make dev      # start all servers in development mode
+make stop     # stop all running servers
+
+# web frontend (requires bun)
+cd web
+bun install
+bun run dev
+
+# or use makefile for web frontend
+make web-setup # install web dependencies
+make web-dev   # run web development server
+make web-build # build for production
+```
+
+### commands
+- unified cli:
+  - explore channels and boards: `coolsquad explore`
+  - view only channels: `coolsquad explore --channels-only`
+  - view only boards: `coolsquad explore --boards-only`
+  - view a specific channel: `coolsquad explore --channel welcome`
+  - view last N messages: `coolsquad explore --channel welcome --limit 5`
+  - chat with a channel: `coolsquad chat --channel welcome`
+  - send a message: `coolsquad chat --channel welcome --send "hello world" --author "your_name"`
+  - interactive board client: `coolsquad board general your_name`
+  - get help: `coolsquad --help` or `coolsquad <command> --help`
+
+### configuration
+- data directory: set with `COOL_SQUAD_DATA_DIR` environment variable or `--data-dir` cli option
+- default data directory: `_data` in project root
+- api server: configure with `HOST` and `PORT` environment variables or command line options
+
 
 ## components
 
@@ -111,63 +169,6 @@ cool_squad lets you chat in real-time with smart bots that remember conversation
 3. post a message: `POST /api/channels/{channel_name}/messages`
 4. create a thread: `POST /api/boards/{board_name}/threads`
 5. view api docs: visit `/docs` in your browser
-
-## getting started
-
-### api key setup
-1. copy the example environment file:
-   ```bash
-   cp .env.example .env
-   ```
-2. edit `.env` and add your api keys:
-   ```
-   OPENAI_API_KEY=your_openai_api_key_here
-   ```
-3. (optional) add keys for other llm services if needed
-
-### setup
-```bash
-# with uv (recommended)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uv venv && source .venv/bin/activate
-uv pip install -e .
-
-# run server
-python -m cool_squad.main
-
-# or use makefile
-make setup    # create venv and install dependencies
-make run      # run the main server
-make dev      # start all servers in development mode
-make stop     # stop all running servers
-
-# web frontend (requires bun)
-cd web
-bun install
-bun run dev
-
-# or use makefile for web frontend
-make web-setup # install web dependencies
-make web-dev   # run web development server
-make web-build # build for production
-```
-
-### commands
-- unified cli:
-  - explore channels and boards: `coolsquad explore`
-  - view only channels: `coolsquad explore --channels-only`
-  - view only boards: `coolsquad explore --boards-only`
-  - view a specific channel: `coolsquad explore --channel welcome`
-  - view last N messages: `coolsquad explore --channel welcome --limit 5`
-  - chat with a channel: `coolsquad chat --channel welcome`
-  - send a message: `coolsquad chat --channel welcome --send "hello world" --author "your_name"`
-  - interactive board client: `coolsquad board general your_name`
-  - get help: `coolsquad --help` or `coolsquad <command> --help`
-
-### configuration
-- data directory: set with `COOL_SQUAD_DATA_DIR` environment variable or `--data-dir` cli option
-- default data directory: `_data` in project root
-- api server: configure with `HOST` and `PORT` environment variables or command line options
 
 ## development
 
