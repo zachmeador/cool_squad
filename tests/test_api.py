@@ -34,7 +34,7 @@ def test_get_channels_empty(test_client):
     """Test getting channels when none exist"""
     response = test_client.get("/api/channels")
     assert response.status_code == 200
-    assert response.json() == []
+    assert response.json() == ['everyone']
 
 def test_post_message_and_get_channel(test_client):
     """Test posting a message to a channel and then retrieving it"""

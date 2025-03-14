@@ -137,7 +137,7 @@ async def post_message(
     })
     
     # Handle bot responses
-    asyncio.create_task(chat_server.handle_bot_mentions_and_broadcast(msg, channel_name))
+    asyncio.create_task(chat_server.handle_bot_mentions(msg, channel_name))
     
     return MessageModel(
         content=msg.content,
@@ -465,4 +465,46 @@ async def clear_bot_tool_considerations(
     # Clear tool considerations
     bot.monologue.clear_tool_considerations()
     
-    return {"status": "success", "message": f"Cleared tool considerations for {bot_name}"} 
+    return {"status": "success", "message": f"Cleared tool considerations for {bot_name}"}
+
+@api_router.post("/channels/{channel_name}/bots/{bot_name}")
+async def add_bot_to_channel(
+    channel_name: str, 
+    bot_name: str,
+    chat_server: ChatServer = Depends(get_chat_server)
+):
+    """add a bot to a channel"""
+    channel = chat_server.get_or_create_channel(channel_name)
+    
+    # verify bot exists
+    if not any(bot.name == bot_name for bot in chat_server.bots):
+        raise HTTPException(status_code=404, detail=f"bot {bot_name} not found")
+    
+    channel.add_bot(bot_name)
+    chat_server.storage.save_channel(channel)
+    return {"status": "bot added to channel"}
+
+@api_router.delete("/channels/{channel_name}/bots/{bot_name}")
+async def remove_bot_from_channel(
+    channel_name: str,
+    bot_name: str,
+    chat_server: ChatServer = Depends(get_chat_server)
+):
+    """remove a bot from a channel"""
+    channel = chat_server.get_or_create_channel(channel_name)
+    
+    if not channel.has_bot(bot_name):
+        raise HTTPException(status_code=404, detail=f"bot {bot_name} not in channel")
+    
+    channel.remove_bot(bot_name)
+    chat_server.storage.save_channel(channel)
+    return {"status": "bot removed from channel"}
+
+@api_router.get("/channels/{channel_name}/bots")
+async def list_channel_bots(
+    channel_name: str,
+    chat_server: ChatServer = Depends(get_chat_server)
+):
+    """list all bots in a channel"""
+    channel = chat_server.get_or_create_channel(channel_name)
+    return list(channel.bot_members) 

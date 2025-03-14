@@ -12,6 +12,7 @@ from enum import Enum
 import json
 import random
 from typing import Dict, Any
+from cool_squad.llm.providers import create_provider
 
 class Complexity(Enum):
     LOW = "low"
@@ -19,25 +20,16 @@ class Complexity(Enum):
     HIGH = "high"
 
 @dataclass
-class BotCharacteristics:
-    verbosity: float  # 0.1-1.0: how wordy the bot is
-    thoughtfulness: float  # 0.1-1.0: how deep the bot's analysis goes
-    
-    def __post_init__(self):
-        # validate and clamp values
-        self.verbosity = max(0.1, min(1.0, self.verbosity))
-        self.thoughtfulness = max(0.1, min(1.0, self.thoughtfulness))
-
-@dataclass
 class ComplexityAnalysis:
     complexity: Complexity
     requires_tools: bool
-    context_tags: list[str]
+    context_tags: list
     base_tokens: int
-    
-    @property
-    def token_limit(self) -> int:
-        return self.base_tokens
+
+@dataclass
+class BotCharacteristics:
+    verbosity: float  # 0.0 to 1.0, higher means more verbose
+    thoughtfulness: float  # 0.0 to 1.0, higher means more thoughtful
 
 class ComplexityManager:
     # base token limits for each complexity level
@@ -48,14 +40,18 @@ class ComplexityManager:
     }
     
     def __init__(self):
-        self.client = None  # will be set to AsyncOpenAI client
+        """initialize with openai provider for analysis"""
+        self.llm = create_provider(
+            provider="openai",
+            model="gpt-4o-mini-2024-07-18",
+            temperature=0.2  # low temperature for consistent analysis
+        )
     
     async def analyze_message(self, message: str) -> ComplexityAnalysis:
         """analyze a message to determine its complexity and requirements"""
         
         # use llm to analyze message complexity
-        response = await self.client.chat.completions.create(
-            model="gpt-4o-mini-2024-07-18",
+        response = await self.llm.send_message(
             messages=[
                 {"role": "system", "content": """analyze the complexity of user messages in a chat.
                 return a json object with these fields:
@@ -69,12 +65,11 @@ class ComplexityManager:
                 - high: complex queries, requests for analysis, multi-step tasks"""},
                 {"role": "user", "content": message}
             ],
-            response_format={ "type": "json_object" },
             max_tokens=100  # keep analysis concise
         )
         
-        result = response.choices[0].message.content
-        analysis = json.loads(result)  # parse json response
+        result = response.content  # parse json response
+        analysis = json.loads(result)
         
         return ComplexityAnalysis(
             complexity=Complexity(analysis["complexity"]),
@@ -84,31 +79,38 @@ class ComplexityManager:
         )
     
     def get_token_limit(self, analysis: ComplexityAnalysis, characteristics: BotCharacteristics) -> int:
-        """calculate token limit based on message complexity and bot characteristics"""
+        """calculate token limit based on complexity and bot characteristics"""
         
-        base = analysis.base_tokens
+        # start with base tokens for complexity level
+        tokens = analysis.base_tokens
         
-        if analysis.complexity == Complexity.LOW:
-            # simple scaling by verbosity for low complexity
-            return int(base * characteristics.verbosity)
-        else:
-            # scale by both verbosity and thoughtfulness for medium/high
-            return int(base * characteristics.verbosity * (1 + characteristics.thoughtfulness))
+        # adjust for verbosity (up to 50% more tokens)
+        tokens = int(tokens * (1 + characteristics.verbosity * 0.5))
+        
+        # adjust for thoughtfulness (up to 30% more tokens)
+        tokens = int(tokens * (1 + characteristics.thoughtfulness * 0.3))
+        
+        # add buffer for tools if needed
+        if analysis.requires_tools:
+            tokens += 200  # extra tokens for tool calls and results
+        
+        return tokens
     
     def get_thought_interval(self, analysis: ComplexityAnalysis) -> float:
-        """calculate the interval between thoughts based on complexity"""
+        """calculate time until next thought based on complexity"""
         
-        # base interval is 5 minutes (300 seconds)
-        base_interval = 300
+        # base intervals for each complexity level (in seconds)
+        intervals = {
+            Complexity.LOW: 300,  # 5 minutes
+            Complexity.MEDIUM: 180,  # 3 minutes
+            Complexity.HIGH: 60  # 1 minute
+        }
         
-        # modify based on complexity
-        complexity_multiplier = {
-            Complexity.LOW: 1.0,  # 5 mins
-            Complexity.MEDIUM: 0.6,  # 3 mins
-            Complexity.HIGH: 0.3  # 1.5 mins
-        }[analysis.complexity]
+        # get base interval
+        interval = intervals[analysis.complexity]
         
-        # add random scatter (-30 to +30 seconds)
-        scatter = random.uniform(-30, 30)
+        # add some randomness (±20%)
+        variation = interval * 0.2
+        interval += random.uniform(-variation, variation)
         
-        return (base_interval * complexity_multiplier) + scatter 
+        return interval 

@@ -18,12 +18,16 @@ run:
 
 dev:
 	@echo "starting all servers in development mode..."
-	@mkdir -p logs
+	@mkdir -p _data/logs
 	@$(MAKE) stop-force  # ensure no stray processes
-	@python -m cool_squad.main > logs/server.log 2>&1 & echo $$! > .server.pid
-	@cd web && bun run dev > ../logs/web.log 2>&1 & echo $$! > ../.web.pid
-	@echo "servers started! check logs/ directory for output"
+	@python -m cool_squad.main > _data/logs/server.log 2>&1 & echo $$! > .server.pid
+	@cd web && bun run dev > ../_data/logs/web.log 2>&1 & echo $$! > ../.web.pid
+	@echo "servers started! check _data/logs directory for output"
 	@echo "use 'make stop' to shut down all servers"
+
+dev-clean:
+	@$(MAKE) clean-logs
+	@$(MAKE) dev
 
 dev-restart:
 	@echo "restarting development servers..."
@@ -49,8 +53,8 @@ stop-force:
 #
 clean-logs:
 	@echo "cleaning logs..."
-	@rm -rf logs/
-	@mkdir -p logs/
+	@rm -rf _data/logs/
+	@mkdir -p _data/logs/
 	@echo "logs cleared"
 
 clean:

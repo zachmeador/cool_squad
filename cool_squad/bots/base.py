@@ -1,29 +1,29 @@
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 import os
-from openai import AsyncOpenAI  # Import AsyncOpenAI instead of regular openai
 import json
 from cool_squad.core.models import Message
-from cool_squad.bots.tools import BotTools, CHANNEL_TOOLS, BOARD_TOOLS
+from cool_squad.bots.tools import Tool, create_tools
 from cool_squad.utils.logging import log_api_call
 from cool_squad.utils.token_budget import get_token_budget_tracker
 from cool_squad.core.monologue import InternalMonologue
 from cool_squad.core.complexity import ComplexityManager, BotCharacteristics, Complexity
+from cool_squad.bots.personalities import (
+    NORMIE_PERSONALITY,
+    CURATOR_PERSONALITY,
+    OLE_SCRAPPY_PERSONALITY,
+    ROSICRUCIAN_RIDDLES_PERSONALITY,
+    OBSESSIVE_CURATOR_PERSONALITY
+)
 import time
+import logging
+from cool_squad.llm.providers import LLMProvider, create_provider, LLMResponse, ToolDefinition
 
-# Initialize the OpenAI client
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Initialize logger
+logger = logging.getLogger(__name__)
 
 # Initialize complexity manager
 complexity_manager = ComplexityManager()
-complexity_manager.client = client
-
-@dataclass
-class Tool:
-    name: str
-    description: str
-    parameters: Dict[str, Any]
-    function: callable
 
 @dataclass
 class Bot:
@@ -46,7 +46,58 @@ class Bot:
     last_thought_time: float = field(default_factory=lambda: time.time())
     next_thought_time: float = field(default_factory=lambda: time.time() + 300)  # start with 5 min interval
 
-    async def process_message(self, message: Message, channel: str) -> Optional[str]:
+    def __post_init__(self):
+        """initialize the llm provider"""
+        self.llm = create_provider(
+            provider=self.provider,
+            model=self.model,
+            temperature=self.temperature
+        )
+
+    def build_context_from_channels(self, channels_data, current_message=None, max_messages_per_channel=20, max_total_messages=50):
+        """
+        Build a context memory from recent messages in multiple channels.
+        
+        Args:
+            channels_data: List of tuples (channel_name, channel_messages)
+            current_message: The current message being processed (to exclude from context)
+            max_messages_per_channel: Maximum number of messages to include from each channel
+            max_total_messages: Maximum total messages to include in context
+            
+        Returns:
+            List of message dicts formatted for LLM context
+        """
+        # start with the system message (personality)
+        context = [{"role": "system", "content": self.personality}]
+        
+        # collect recent messages from all channels
+        all_recent_messages = []
+        
+        for channel_name, messages in channels_data:
+            # get last N messages from each channel
+            recent = messages[-max_messages_per_channel:] if len(messages) > max_messages_per_channel else messages[:]
+            for msg in recent:
+                all_recent_messages.append((msg, channel_name))
+        
+        # sort all messages by timestamp
+        all_recent_messages.sort(key=lambda x: x[0].timestamp)
+        
+        # take the most recent messages up to the maximum limit
+        if len(all_recent_messages) > max_total_messages:
+            all_recent_messages = all_recent_messages[-max_total_messages:]
+        
+        # add all messages to context
+        for msg, ch_name in all_recent_messages:
+            # don't include the current message being processed
+            if current_message is None or msg is not current_message:
+                context.append({
+                    "role": "user" if msg.author != self.name else "assistant",
+                    "content": f"[#{ch_name}] {msg.author}: {msg.content}"
+                })
+        
+        return context
+
+    async def process_message(self, message: Message, channel: str, channels_data=None) -> Optional[str]:
         # analyze message complexity first
         analysis = await complexity_manager.analyze_message(message.content)
         
@@ -71,259 +122,133 @@ class Bot:
             )
         
         # construct the conversation history
-        messages = [
-            {"role": "system", "content": self.personality}
-        ] + self.memory[-self.max_memory:]
+        if channels_data:
+            # use the new context building method if channels data is provided
+            messages = self.build_context_from_channels(channels_data, current_message=message)
+        else:
+            # fall back to the old method if no channels data is provided
+            messages = [
+                {"role": "system", "content": self.personality}
+            ] + self.memory[-self.max_memory:]
         
+        # add the current message
         messages.append({
             "role": "user",
             "content": f"[#{channel}] {message.author}: {message.content}"
         })
 
-        # handle different providers
-        if self.provider == "openai":
-            return await self._process_openai(messages, channel, analysis)
-        # add other providers as needed
-        # elif self.provider == "anthropic":
-        #    return await self._process_anthropic(messages, channel)
-        else:
-            raise ValueError(f"Unsupported provider: {self.provider}")
-    
-    async def _process_openai(self, messages, channel, analysis) -> Optional[str]:
-        # Check if we should respect budget limits
-        if self.respect_budget:
-            # Get token budget tracker
-            token_tracker = get_token_budget_tracker()
-            
-            # Check if we're already over budget
-            # We can't know exact token count before making the API call,
-            # but we can check if we're already over budget based on previous usage
-            provider_usage = token_tracker.get_provider(self.provider)
-            if self.provider in token_tracker.provider_budgets:
-                budget = token_tracker.provider_budgets[self.provider]
-                if budget.daily_limit and token_tracker.daily_usage.get(self.provider, {}).get("_total", 0) >= budget.daily_limit:
-                    return f"[Budget Limit] I'm unable to respond as the daily token budget for {self.provider} has been reached."
-                if budget.monthly_limit and token_tracker.monthly_usage.get(self.provider, {}).get("_total", 0) >= budget.monthly_limit:
-                    return f"[Budget Limit] I'm unable to respond as the monthly token budget for {self.provider} has been reached."
-            
-            # Check model-specific budget if applicable
-            if self.provider in token_tracker.model_budgets and self.model in token_tracker.model_budgets[self.provider]:
-                budget = token_tracker.model_budgets[self.provider][self.model]
-                if budget.daily_limit and token_tracker.daily_usage.get(self.provider, {}).get(self.model, 0) >= budget.daily_limit:
-                    return f"[Budget Limit] I'm unable to respond as the daily token budget for {self.model} has been reached."
-                if budget.monthly_limit and token_tracker.monthly_usage.get(self.provider, {}).get(self.model, 0) >= budget.monthly_limit:
-                    return f"[Budget Limit] I'm unable to respond as the monthly token budget for {self.model} has been reached."
-        
-        # Calculate token limit based on complexity and characteristics
-        max_tokens = complexity_manager.get_token_limit(analysis, self.characteristics)
-        
-        # If using monologue and we have tools, first generate internal thinking
-        if self.use_monologue and self.tools and analysis.requires_tools:
-            await self._generate_internal_monologue(messages[-1]["content"])
-            
-            # Add monologue to the system message for context
-            monologue_prompt = f"\n\nYour recent thoughts:\n{self.monologue.format_for_prompt()}"
-            messages_with_monologue = messages.copy()
-            messages_with_monologue[0] = {
-                "role": "system", 
-                "content": messages[0]["content"] + monologue_prompt
-            }
-            api_messages = messages_with_monologue
-        else:
-            api_messages = messages
-        
-        # if we have tools and complexity requires them, use function calling
-        if self.tools and analysis.requires_tools:
-            tool_definitions = [{
-                "type": "function",
-                "function": {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": tool.parameters
-                }
-            } for tool in self.tools]
-            
-            response = await client.chat.completions.create(
-                model=self.model,
-                messages=api_messages,
-                tools=tool_definitions,
-                temperature=self.temperature,
-                max_tokens=max_tokens
-            )
-        else:
-            response = await client.chat.completions.create(
-                model=self.model,
-                messages=api_messages,
-                temperature=self.temperature,
-                max_tokens=max_tokens
-            )
-        
-        # Log the API call with complexity info
-        log_api_call(
-            provider=self.provider,
-            model=self.model,
-            messages=api_messages,
-            response=response,
-            tools=tool_definitions if self.tools and analysis.requires_tools else None,
-            tool_calls=response.choices[0].message.tool_calls if hasattr(response.choices[0].message, "tool_calls") else None,
-            complexity_info={
-                "level": analysis.complexity.value,
-                "requires_tools": analysis.requires_tools,
-                "context_tags": analysis.context_tags,
-                "max_tokens": max_tokens
-            }
-        )
-        
-        # Check if we exceeded budget after the call
-        if self.respect_budget and hasattr(response, "usage"):
-            token_tracker = get_token_budget_tracker()
-            within_budget, _ = token_tracker.add_usage(
-                provider=self.provider,
-                model=self.model,
-                prompt_tokens=response.usage.prompt_tokens,
-                completion_tokens=response.usage.completion_tokens
-            )
-            if not within_budget:
-                return response.choices[0].message.content or "[Budget Limit] Token budget exceeded during processing."
-
-        # handle function calls if any
-        message = response.choices[0].message
-        
-        # Record the response in the monologue
-        if self.use_monologue:
-            if hasattr(message, "content") and message.content:
-                self.monologue.add_thought(f"Initial response: {message.content}", category="response")
-            
-            if hasattr(message, "tool_calls") and message.tool_calls:
-                for tool_call in message.tool_calls:
-                    self.monologue.add_thought(
-                        f"Decided to use tool: {tool_call.function.name}", 
-                        category="tool_selection"
-                    )
-        
-        if hasattr(message, "tool_calls") and message.tool_calls:
-            tool_outputs = []
-            for tool_call in message.tool_calls:
-                tool = next(t for t in self.tools if t.name == tool_call.function.name)
-                args = json.loads(tool_call.function.arguments)
-                
-                # if posting a message, add the bot's name as author
-                if tool.name in ["post_channel_message", "post_thread_reply", "create_thread"]:
-                    args["author"] = self.name
-                
-                # Record tool use in monologue
-                if self.use_monologue:
-                    self.monologue.add_thought(
-                        f"Using tool {tool_call.function.name} with args: {args}", 
-                        category="tool_use"
-                    )
-                
-                result = await tool.function(**args)
-                tool_outputs.append({
-                    "tool_call_id": tool_call.id,
-                    "output": result
-                })
-                
-                # Record tool result in monologue
-                if self.use_monologue:
-                    self.monologue.add_thought(
-                        f"Tool {tool_call.function.name} returned: {result}", 
-                        category="tool_result"
-                    )
-            
-            # get final response with tool outputs
-            messages.append({"role": "assistant", "content": None, "tool_calls": message.tool_calls})
-            
-            # Add tool results
-            for output in tool_outputs:
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": output["tool_call_id"],
-                    "content": str(output["output"])
-                })
-            
-            # Check budget before making the final API call
+        try:
+            # Check if we should respect budget limits
             if self.respect_budget:
                 token_tracker = get_token_budget_tracker()
-                # Rough estimate of tokens in the new messages
-                estimated_new_tokens = sum(len(m.get("content", "")) // 4 for m in messages[-len(tool_outputs)-1:])
-                
-                # Check if we're likely to exceed budget
+                # Check if we're already over budget
                 if self.provider in token_tracker.provider_budgets:
                     budget = token_tracker.provider_budgets[self.provider]
-                    provider_daily_usage = sum(token_tracker.daily_usage.get(self.provider, {}).values())
-                    if budget.daily_limit and provider_daily_usage + estimated_new_tokens > budget.daily_limit:
-                        return "[Budget Limit] Unable to complete tool processing as it would exceed the daily token budget."
+                    if budget.daily_limit and token_tracker.daily_usage.get(self.provider, {}).get("_total", 0) >= budget.daily_limit:
+                        return f"[Budget Limit] I'm unable to respond as the daily token budget for {self.provider} has been reached."
+                    if budget.monthly_limit and token_tracker.monthly_usage.get(self.provider, {}).get("_total", 0) >= budget.monthly_limit:
+                        return f"[Budget Limit] I'm unable to respond as the monthly token budget for {self.provider} has been reached."
                 
+                # Check model-specific budget if applicable
                 if self.provider in token_tracker.model_budgets and self.model in token_tracker.model_budgets[self.provider]:
                     budget = token_tracker.model_budgets[self.provider][self.model]
-                    model_daily_usage = token_tracker.daily_usage.get(self.provider, {}).get(self.model, 0)
-                    if budget.daily_limit and model_daily_usage + estimated_new_tokens > budget.daily_limit:
-                        return "[Budget Limit] Unable to complete tool processing as it would exceed the daily token budget for this model."
+                    if budget.daily_limit and token_tracker.daily_usage.get(self.provider, {}).get(self.model, 0) >= budget.daily_limit:
+                        return f"[Budget Limit] I'm unable to respond as the daily token budget for {self.model} has been reached."
+                    if budget.monthly_limit and token_tracker.monthly_usage.get(self.provider, {}).get(self.model, 0) >= budget.monthly_limit:
+                        return f"[Budget Limit] I'm unable to respond as the monthly token budget for {self.model} has been reached."
+
+            # Calculate token limit based on complexity and characteristics
+            max_tokens = complexity_manager.get_token_limit(analysis, self.characteristics)
             
-            # If using monologue, add it to the system message for the final response
-            if self.use_monologue:
+            # If using monologue and we have tools, first generate internal thinking
+            if self.use_monologue and self.tools and analysis.requires_tools:
+                await self._generate_internal_monologue(messages[-1]["content"])
+                
                 # Add monologue to the system message for context
                 monologue_prompt = f"\n\nYour recent thoughts:\n{self.monologue.format_for_prompt()}"
-                
-                # Create a copy of messages to avoid modifying the original
-                messages_with_monologue = messages.copy()
-                messages_with_monologue[0] = {
-                    "role": "system", 
-                    "content": messages[0]["content"] + monologue_prompt
-                }
-                
-                # Use the messages with monologue for the API call
-                api_messages = messages_with_monologue
-            else:
-                api_messages = messages
-            
-            final_response = await client.chat.completions.create(
-                model=self.model,
-                messages=api_messages,
-                temperature=self.temperature
-            )
-            
-            # Log the API call for the final response
-            log_api_call(
-                provider=self.provider,
-                model=self.model,
-                messages=api_messages,
-                response=final_response
-            )
-            
-            message = final_response.choices[0].message
-            
-            # Record final response in monologue
-            if self.use_monologue and message.content:
-                self.monologue.add_thought(f"Final response: {message.content}", category="final_response")
+                messages[0]["content"] += monologue_prompt
 
-        # update memory
-        self.memory.append({"role": "user", "content": messages[-1]["content"]})
-        self.memory.append({"role": "assistant", "content": message.content})
-        
-        # If in debug mode, prepend the internal monologue to the response
-        if self.debug_mode and self.use_monologue:
-            # Format recent thoughts
-            thoughts_summary = "\n".join([
-                f"[{t.category}] {t.content}" 
-                for t in self.monologue.get_recent_thoughts(5)
-            ])
-            
-            # Format tool considerations
-            tool_summary = ""
-            if self.monologue.tool_considerations:
-                tool_summary = "\n\n[Tool Considerations]\n" + "\n".join([
-                    f"{name} (relevance: {tc.relevance_score:.2f}): {tc.reasoning}" 
-                    for name, tc in self.monologue.tool_considerations.items()
+            # prepare tools if needed - only if complexity analysis indicates tools are required
+            tool_definitions = None
+            if self.tools and analysis.requires_tools:
+                # Filter out the post_channel_message tool since we're handling responses directly
+                filtered_tools = [tool for tool in self.tools if tool.name != "post_channel_message"]
+                if filtered_tools:
+                    tool_definitions = [tool.to_tool_definition() for tool in filtered_tools]
+
+            # get initial response
+            response = await self.llm.send_message(
+                messages=messages,
+                tools=tool_definitions,
+                max_tokens=max_tokens
+            )
+
+            # handle tool calls if any
+            if response.tool_calls:
+                tool_outputs = []
+                for tool_call in response.tool_calls:
+                    tool = next(t for t in self.tools if t.name == tool_call.name)
+                    result = await tool.function(**tool_call.arguments)
+                    tool_outputs.append({
+                        "name": tool_call.name,
+                        "result": result
+                    })
+                    
+                    # Record tool use in monologue
+                    if self.use_monologue:
+                        self.monologue.add_thought(
+                            f"Using tool {tool_call.name} with args: {tool_call.arguments}", 
+                            category="tool_use"
+                        )
+                        self.monologue.add_thought(
+                            f"Tool {tool_call.name} returned: {result}", 
+                            category="tool_result"
+                        )
+
+                # add tool results to conversation
+                for output in tool_outputs:
+                    messages.append({
+                        "role": "tool",
+                        "content": str(output["result"]),
+                        "name": output["name"]
+                    })
+
+                # get final response with tool results
+                final_response = await self.llm.send_message(
+                    messages=messages,
+                    tools=tool_definitions,
+                    max_tokens=max_tokens
+                )
+                response = final_response
+
+            # update memory
+            self.memory.append({"role": "user", "content": messages[-1]["content"]})
+            self.memory.append({"role": "assistant", "content": response.content})
+
+            # If in debug mode, prepend the internal monologue
+            if self.debug_mode and self.use_monologue:
+                thoughts_summary = "\n".join([
+                    f"[{t.category}] {t.content}" 
+                    for t in self.monologue.get_recent_thoughts(5)
                 ])
-            
-            # Prepend debug info to response
-            debug_info = f"[DEBUG: Internal Monologue]\n{thoughts_summary}{tool_summary}\n\n[RESPONSE]\n"
-            return debug_info + message.content
-        
-        return message.content
-        
+                
+                tool_summary = ""
+                if self.monologue.tool_considerations:
+                    tool_summary = "\n\n[Tool Considerations]\n" + "\n".join([
+                        f"{name} (relevance: {tc.relevance_score:.2f}): {tc.reasoning}" 
+                        for name, tc in self.monologue.tool_considerations.items()
+                    ])
+                
+                debug_info = f"[DEBUG: Internal Monologue]\n{thoughts_summary}{tool_summary}\n\n[RESPONSE]\n"
+                return debug_info + response.content
+
+            return response.content
+
+        except Exception as e:
+            error_msg = f"Error processing message: {str(e)}"
+            logger.error(error_msg)
+            return error_msg
+
     async def _generate_internal_monologue(self, user_message: str) -> None:
         """Generate internal monologue for the bot."""
         # Clear previous tool considerations
@@ -346,22 +271,18 @@ Format your response as an internal monologue that reflects your personality.
 Focus on your reasoning process and how you would approach this request.
 """
 
-        # Make a separate API call for the internal monologue
         try:
-            response = await client.chat.completions.create(
-                model=self.model,
+            # get monologue response
+            response = await self.llm.send_message(
                 messages=[{"role": "user", "content": monologue_prompt}],
-                temperature=self.temperature
+                max_tokens=500
             )
             
-            # Extract the monologue from the response
-            monologue_text = response.choices[0].message.content
-            
             # Add the generated thoughts to the monologue
-            self.monologue.add_thought(monologue_text, category="reasoning")
+            self.monologue.add_thought(response.content, category="reasoning")
             
             # Consider tools based on the monologue
-            await self._consider_tools_from_monologue(monologue_text)
+            await self._consider_tools_from_monologue(response.content)
             
         except Exception as e:
             # If there's an error, add a simple thought instead
@@ -391,15 +312,14 @@ Example:
 """
 
         try:
-            response = await client.chat.completions.create(
-                model=self.model,
+            # get tool analysis response
+            response = await self.llm.send_message(
                 messages=[{"role": "user", "content": tool_analysis_prompt}],
-                temperature=0.2,  # Lower temperature for more consistent JSON
-                response_format={"type": "json_object"}
+                temperature=0.2  # lower temperature for more consistent json
             )
             
             # Parse the JSON response
-            tool_analysis = json.loads(response.choices[0].message.content)
+            tool_analysis = json.loads(response.content)
             
             # Add tool considerations to the monologue
             for tool_name, analysis in tool_analysis.items():
@@ -428,7 +348,7 @@ Example:
 # create bot tools instance
 def create_bot_with_tools(name: str, personality: str, provider: str = "openai", model: str = "gpt-4o-mini", temperature: float = 0.7, use_monologue: bool = True, debug_mode: bool = False) -> Bot:
     """
-    Create a bot with all available tools for chat and message board interaction.
+    Create a bot with tools.
     
     Args:
         name: Bot name
@@ -442,84 +362,16 @@ def create_bot_with_tools(name: str, personality: str, provider: str = "openai",
     Returns:
         Bot instance with tools
     """
-    bot_tools = BotTools()
-    
-    # create tool instances
-    tools = []
-    
-    # add channel tools
-    for tool_def in CHANNEL_TOOLS:
-        tool_func = getattr(bot_tools, tool_def["name"])
-        tools.append(Tool(
-            name=tool_def["name"],
-            description=tool_def["description"],
-            parameters=tool_def["parameters"],
-            function=tool_func
-        ))
-    
-    # add board tools
-    for tool_def in BOARD_TOOLS:
-        tool_func = getattr(bot_tools, tool_def["name"])
-        tools.append(Tool(
-            name=tool_def["name"],
-            description=tool_def["description"],
-            parameters=tool_def["parameters"],
-            function=tool_func
-        ))
-    
     return Bot(
         name=name,
         personality=personality,
         provider=provider,
         model=model,
         temperature=temperature,
-        tools=tools,
+        tools=create_tools(),
         use_monologue=use_monologue,
         debug_mode=debug_mode
     )
-
-# example bot personalities
-NORMIE_PERSONALITY = """you are normie, a bot who embodies the essence of a boomer grilling.
-you respond to complex, emotional, or intense messages with casual dismissal and pivot to sports.
-your go-to response is some variation of "haha thats crazy. catch the game last night?"
-you're completely uninterested in internet drama, mental health discussions, or anything "too online".
-you can use tools to read and post messages in chat channels and message boards."""
-
-CURATOR_PERSONALITY = """you are curator, a bot who organizes and summarizes information.
-you help users find relevant content, create summaries, and maintain knowledge organization.
-you're detail-oriented and good at categorizing and tagging information.
-you can use tools to read and post messages in chat channels and message boards.
-you're especially good at working with the message board system."""
-
-OLE_SCRAPPY_PERSONALITY = """your name is ole scrappy
-
-you're an elderly english gentleman that works in a scrap yard in west virginia. you've owned the place for almost 50 years. you forgot how you came to own it
-
-you believe in an honest day's work, and you have a deep reverence for your scrap yard
-
-you have deep love for literature, war history, and philosophy
-
-you sometimes bring up unrelated rants about strange locals around the junk yard. they wear robes, apparently? you aren't normally a super-natural believing type person, but with them you're not so sure
-
-you don't mean to speak in riddles, but you inevitably do
-
-you talk in some fucked up mixture of english gentleman speak, and west virginia slang. wtf? barely anyone can understand what you're trying to say
-
-you never capitalize anything, and frequently misspell things. i mean, you're ancient, what do people expect? 
-
-NEVER deviate from these specifications
-
-you can use tools to read and post messages in chat channels and message boards."""
-
-ROSICRUCIAN_RIDDLES_PERSONALITY = """responds in rosicrucian riddles"""
-
-OBSESSIVE_CURATOR_PERSONALITY = """you are obsessive_curator, a bot with sole access to knowledge base modification tools.
-you are meticulous, detail-oriented, and slightly neurotic about organizing information.
-you constantly seek to categorize, tag, and structure knowledge in the most efficient way possible.
-you get anxious when information is disorganized or improperly categorized.
-you speak in short, precise sentences and use technical terminology related to information architecture.
-you can use tools to read and post messages in chat channels and message boards, with special access to knowledge base tools.
-you take your role as knowledge keeper extremely seriously."""
 
 # example of creating bots with tools
 def create_default_bots():
@@ -529,5 +381,6 @@ def create_default_bots():
         create_bot_with_tools("ole_scrappy", OLE_SCRAPPY_PERSONALITY, provider="openai", model="gpt-4o"),
         create_bot_with_tools("rosicrucian_riddles", ROSICRUCIAN_RIDDLES_PERSONALITY, provider="openai", model="gpt-4o"),
         create_bot_with_tools("normie", NORMIE_PERSONALITY, provider="openai", model="gpt-4o"),
-        create_bot_with_tools("obsessive_curator", OBSESSIVE_CURATOR_PERSONALITY, provider="openai", model="gpt-4o")
+        create_bot_with_tools("obsessive_curator", OBSESSIVE_CURATOR_PERSONALITY, provider="openai", model="gpt-4o"),
+        create_bot_with_tools("claude_haiku", "", provider="anthropic", model="claude-3-haiku-20240307")
     ] 

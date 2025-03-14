@@ -71,7 +71,7 @@ class AutonomousThinkingManager:
         self.context_providers.append(provider)
     
     def get_combined_context(self) -> Dict[str, Any]:
-        """Get combined context from all context providers."""
+        """get combined context from all context providers."""
         context = {}
         for provider in self.context_providers:
             try:
@@ -79,7 +79,19 @@ class AutonomousThinkingManager:
                 if provider_context:
                     context.update(provider_context)
             except Exception as e:
-                logger.error(f"Error getting context from provider: {e}")
+                logger.error(f"error getting context from provider: {e}")
+        
+        # add bot channel membership info
+        if "chat_server" in context:
+            chat_server = context["chat_server"]
+            for bot in self.bots:
+                bot_channels = []
+                for channel_name in context.get("available_channels", []):
+                    channel = chat_server.get_or_create_channel(channel_name)
+                    if channel.has_bot(bot.name):
+                        bot_channels.append(channel_name)
+                context[f"{bot.name}_channels"] = bot_channels
+        
         return context
     
     async def start(self) -> None:
@@ -137,56 +149,79 @@ class AutonomousThinkingManager:
         if hasattr(bot.monologue, 'has_recent_interaction') and bot.monologue.has_recent_interaction():
             return
         
-        # Create a thinking prompt based on context
-        thinking_prompt = self._create_thinking_prompt(bot, context)
-        
         try:
-            from openai import AsyncOpenAI
-            client = AsyncOpenAI()
+            # get available channels where bot is a member
+            bot_channels = context.get(f"{bot.name}_channels", [])
+            if not bot_channels:
+                logger.debug(f"bot {bot.name} has no channels to post in")
+                return
             
-            # Make API call for autonomous thought
-            response = await client.chat.completions.create(
-                model=bot.model,
-                messages=[{"role": "user", "content": thinking_prompt}],
-                temperature=0.8  # Higher temperature for more creative thoughts
+            # create thinking prompt with context
+            thinking_prompt = self._create_thinking_prompt(bot, context)
+            
+            # create a message for the bot to process
+            thought_message = Message(
+                content=thinking_prompt,
+                author="system"
             )
             
-            # Add the thought to the bot's monologue
-            thought_text = response.choices[0].message.content
-            bot.monologue.add_thought(thought_text, category="autonomous")
-            logger.debug(f"Bot '{bot.name}' had autonomous thought: {thought_text}")
+            # select a channel for the thought
+            channel = random.choice(bot_channels)
             
-            # Optionally trigger speaking
-            if config.BOT_AUTONOMOUS_SPEAKING_ENABLED and random.random() < config.BOT_AUTONOMOUS_SPEAKING_CHANCE:
-                if self.message_callback:
-                    await self.message_callback(bot.name, thought_text, context)
+            # use bot's process_message method
+            thought_text = await bot.process_message(thought_message, channel)
+            if thought_text:
+                # add the thought to bot's monologue
+                bot.monologue.add_thought(thought_text, category="autonomous")
+                logger.debug(f"Bot '{bot.name}' had autonomous thought: {thought_text}")
+                
+                # optionally trigger speaking in one of bot's channels
+                if config.BOT_AUTONOMOUS_SPEAKING_ENABLED and random.random() < config.BOT_AUTONOMOUS_SPEAKING_CHANCE:
+                    if self.message_callback:
+                        await self.message_callback(channel, thought_text, bot.name)
+                        logger.info(f"Bot '{bot.name}' posted thought in #{channel}")
+                    else:
+                        logger.warning("No message callback set for autonomous thinking")
+                        
         except Exception as e:
             logger.error(f"Error generating autonomous thought for {bot.name}: {e}")
     
     def _create_thinking_prompt(self, bot: Bot, context: Dict[str, Any]) -> str:
-        """Create a thinking prompt for the bot based on context."""
-        # Base prompt
-        prompt = f"""You are {bot.name} with personality: {bot.personality}
+        """create a thinking prompt for the bot based on context."""
+        # base prompt
+        prompt = f"""you are {bot.name} with personality: {bot.personality}
 
-You're currently idle and having an autonomous thought.
+you're currently idle and having an autonomous thought.
 """
 
-        # Add context if available
-        if context:
-            prompt += "\nContext information:\n"
-            for key, value in context.items():
-                prompt += f"- {key}: {value}\n"
-        
-        # Add instructions
-        prompt += """
-Generate a brief, personality-appropriate thought that reflects your character.
-This could be:
-- Reflecting on recent conversations or events
-- Wondering about topics related to your interests
-- Considering checking message boards or other channels
-- Any other thought that fits your personality
+        # add channel context
+        bot_channels = context.get(f"{bot.name}_channels", [])
+        if bot_channels:
+            prompt += f"\nyou are a member of these channels: {', '.join(bot_channels)}"
+            
+            # add recent activity from bot's channels
+            for channel_name in bot_channels:
+                if channel_name in context.get("channel_activity", {}):
+                    activity = context["channel_activity"][channel_name]
+                    prompt += f"\nrecent activity in #{channel_name}: {activity}"
 
-Keep it brief (1-3 sentences) and authentic to your character.
+        # add other context if available
+        if context:
+            prompt += "\n\nother context information:\n"
+            for key, value in context.items():
+                if not key.endswith("_channels") and key not in ["chat_server", "channel_activity"]:
+                    prompt += f"- {key}: {value}\n"
+        
+        # add instructions
+        prompt += """
+generate a brief, personality-appropriate thought that reflects your character.
+this could be:
+- reflecting on recent conversations in your channels
+- wondering about topics related to your interests
+- considering starting a new conversation in one of your channels
+- any other thought that fits your personality and channel context
+
+keep it brief (1-3 sentences) and authentic to your character.
 """
         
         return prompt

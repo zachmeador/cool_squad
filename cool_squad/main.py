@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 import random
 from fastapi.middleware.cors import CORSMiddleware
+import logging
 
 # Updated imports for new module structure
 from cool_squad.server.chat import ChatServer
@@ -40,6 +41,8 @@ board_server = BoardServer(storage)
 # Initialize autonomous thinking manager
 autonomous_manager = get_autonomous_thinking_manager()
 
+logger = logging.getLogger(__name__)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Register bots with autonomous thinking manager
@@ -52,32 +55,19 @@ async def lifespan(app: FastAPI):
     })
     
     # Set message callback to post to channels
-    async def message_callback(bot_name, content, context):
-        # Pick an active channel if available, otherwise pick any channel
-        active_channels = context.get("active_channels", [])
-        available_channels = context.get("available_channels", [])
-        
-        if active_channels:
-            channel_name = random.choice(active_channels)
-        elif available_channels:
-            channel_name = random.choice(available_channels)
-        else:
-            # Default to "general" if no channels exist
-            channel_name = "general"
-        
-        # Create and add message
-        message = Message(content=content, author=bot_name)
-        
-        # Add to storage
+    async def message_callback(channel_name: str, content: str, bot_name: str):
+        # load channel and verify bot membership
         channel_data = storage.load_channel(channel_name)
-        if not channel_data:
-            from cool_squad.core.models import Channel
-            channel_data = Channel(name=channel_name)
+        if not channel_data or not channel_data.has_bot(bot_name):
+            logger.warning(f"bot {bot_name} attempted to post in #{channel_name} without membership")
+            return
         
+        # create and add message
+        message = Message(content=content, author=bot_name)
         channel_data.add_message(message)
         storage.save_channel(channel_data)
         
-        # Broadcast via SSE
+        # broadcast via sse
         await broadcast_chat_message(channel_name, {
             "content": content,
             "author": bot_name,

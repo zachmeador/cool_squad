@@ -132,12 +132,58 @@ def print_boards(storage):
                     print(f"    [{format_timestamp(msg.timestamp)}] {msg.author}: {msg.content}")
 
 
+def print_channel_bots(storage, channel_name):
+    """print all bots in a channel."""
+    channel = storage.load_channel(channel_name)
+    
+    print(f"\nbots in #{channel_name}:")
+    print("-" * (len(channel_name) + 14))
+    
+    if not channel.bot_members:
+        print("  no bots")
+    else:
+        for bot in sorted(channel.bot_members):
+            print(f"  @{bot}")
+
+
+def add_bot_to_channel(storage, channel_name, bot_name):
+    """add a bot to a channel."""
+    channel = storage.load_channel(channel_name)
+    channel.add_bot(bot_name)
+    storage.save_channel(channel)
+    print(f"added @{bot_name} to #{channel_name}")
+
+
+def remove_bot_from_channel(storage, channel_name, bot_name):
+    """remove a bot from a channel."""
+    channel = storage.load_channel(channel_name)
+    if not channel.has_bot(bot_name):
+        print(f"@{bot_name} is not in #{channel_name}")
+        return
+    
+    channel.remove_bot(bot_name)
+    storage.save_channel(channel)
+    print(f"removed @{bot_name} from #{channel_name}")
+
+
 class CLIClient:
     def __init__(self, username: str, board: str):
         self.username = username
         self.board = board
         self.client_id = str(uuid.uuid4())
         self.running = True
+        self.storage = Storage()
+        self.commands = {
+            'help': (self.show_help, 'show this help message'),
+            'exit': (self.exit, 'exit the cli'),
+            'quit': (self.exit, 'exit the cli'),
+            'channels': (self.list_channels, 'list all channels'),
+            'read': (self.read_channel, 'read messages from a channel (usage: read <channel> [limit])'),
+            'send': (self.send_message, 'send a message (usage: send <channel> <message>)'),
+            'bots': (self.list_bots, 'list bots in a channel (usage: bots <channel>)'),
+            'addbot': (self.add_bot, 'add a bot to a channel (usage: addbot <channel> <bot>)'),
+            'removebot': (self.remove_bot, 'remove a bot from a channel (usage: removebot <channel> <bot>)')
+        }
     
     async def receive_board_messages(self):
         """Receive messages from the board via SSE."""
@@ -230,6 +276,57 @@ class CLIClient:
         except Exception as e:
             print(f"error sending messages: {e}")
             self.running = False
+
+    def exit(self, args):
+        """Exit the CLI."""
+        self.running = False
+        return "exiting..."
+
+    def show_help(self, args):
+        """Show help message with available commands."""
+        help_text = "available commands:\n"
+        for cmd, (_, desc) in self.commands.items():
+            help_text += f"  {cmd}: {desc}\n"
+        return help_text.strip()
+
+    def list_channels(self, args):
+        """list all channels."""
+        print_channels(self.storage)
+
+    def read_channel(self, args):
+        """read messages from a channel."""
+        if len(args) < 1:
+            print("error: channel name required")
+            return
+        print_channel_messages(self.storage, args[0], args[1] if len(args) > 1 else None)
+
+    def send_message(self, args):
+        """send a message."""
+        if len(args) < 2:
+            print("error: channel and message required")
+            return
+        send_message(self.storage, args[0], self.username, args[1])
+
+    def list_bots(self, args):
+        """list bots in a channel."""
+        if not args:
+            print("error: channel name required")
+            return
+        print_channel_bots(self.storage, args[0])
+    
+    def add_bot(self, args):
+        """add a bot to a channel."""
+        if len(args) < 2:
+            print("error: channel and bot names required")
+            return
+        add_bot_to_channel(self.storage, args[0], args[1])
+    
+    def remove_bot(self, args):
+        """remove a bot from a channel."""
+        if len(args) < 2:
+            print("error: channel and bot names required")
+            return
+        remove_bot_from_channel(self.storage, args[0], args[1])
 
 
 def cmd_explore(args):

@@ -4,6 +4,9 @@ from pathlib import Path
 from typing import Dict, List
 from cool_squad.core.models import Channel, Message, Board, Thread
 from cool_squad.core.config import get_data_dir
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Storage:
     def __init__(self, data_dir: str = None):
@@ -51,7 +54,8 @@ class Storage:
                     "timestamp": msg.timestamp
                 }
                 for msg in channel.messages
-            ]
+            ],
+            "bot_members": list(channel.bot_members)
         }
         
         with open(self._channel_path(channel.name), 'w') as f:
@@ -62,21 +66,36 @@ class Storage:
         channel_path = self._channel_path(channel_name)
         
         if os.path.exists(channel_path):
-            with open(channel_path, 'r') as f:
-                data = json.load(f)
-            
-            messages = [
-                Message(
-                    content=msg["content"],
-                    author=msg["author"],
-                    timestamp=msg["timestamp"]
+            try:
+                with open(channel_path, 'r') as f:
+                    data = json.load(f)
+                
+                messages = [
+                    Message(
+                        content=msg["content"],
+                        author=msg["author"],
+                        timestamp=msg["timestamp"]
+                    )
+                    for msg in data["messages"]
+                ]
+                
+                channel = Channel(
+                    name=channel_name,
+                    messages=messages
                 )
-                for msg in data["messages"]
-            ]
-            
-            return Channel(name=channel_name, messages=messages)
-        else:
-            return Channel(name=channel_name)
+                
+                # load bot members if they exist in the data
+                if "bot_members" in data:
+                    channel.bot_members.update(data["bot_members"])
+                
+                return channel
+            except (json.JSONDecodeError, KeyError) as e:
+                # handle empty or invalid json files
+                logger.warning(f"error loading channel {channel_name}: {str(e)}. creating new channel.")
+                return Channel(name=channel_name, messages=[])
+        
+        # create a new channel if it doesn't exist
+        return Channel(name=channel_name, messages=[])
     
     def save_board(self, board: Board) -> None:
         """Save a board to disk."""
@@ -108,34 +127,40 @@ class Storage:
         board_path = self._board_path(board_name)
         
         if os.path.exists(board_path):
-            with open(board_path, 'r') as f:
-                data = json.load(f)
-            
-            board = Board(name=board_name)
-            
-            for thread_data in data["threads"]:
-                messages = [
-                    Message(
-                        content=msg["content"],
-                        author=msg["author"],
-                        timestamp=msg["timestamp"]
+            try:
+                with open(board_path, 'r') as f:
+                    data = json.load(f)
+                
+                board = Board(name=board_name)
+                
+                for thread_data in data["threads"]:
+                    messages = [
+                        Message(
+                            content=msg["content"],
+                            author=msg["author"],
+                            timestamp=msg["timestamp"]
+                        )
+                        for msg in thread_data["messages"]
+                    ]
+                    
+                    thread = Thread(
+                        title=thread_data["title"],
+                        first_message=messages[0],
+                        messages=messages,
+                        tags=set(thread_data["tags"]),
+                        pinned=thread_data["pinned"]
                     )
-                    for msg in thread_data["messages"]
-                ]
+                    
+                    board.threads.append(thread)
                 
-                thread = Thread(
-                    title=thread_data["title"],
-                    first_message=messages[0],
-                    messages=messages,
-                    tags=set(thread_data["tags"]),
-                    pinned=thread_data["pinned"]
-                )
-                
-                board.threads.append(thread)
-            
-            return board
-        else:
-            return Board(name=board_name)
+                return board
+            except (json.JSONDecodeError, KeyError) as e:
+                # handle empty or invalid json files
+                logger.warning(f"error loading board {board_name}: {str(e)}. creating new board.")
+                return Board(name=board_name)
+        
+        # create a new board if it doesn't exist
+        return Board(name=board_name)
     
     def cleanup(self) -> None:
         """Delete all stored data."""

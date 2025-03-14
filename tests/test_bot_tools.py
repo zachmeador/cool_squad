@@ -13,6 +13,7 @@ def mock_storage():
     channel = Channel(name="test-channel")
     channel.add_message(Message(content="Test message 1", author="user1"))
     channel.add_message(Message(content="Test message 2", author="user2"))
+    channel.add_bot("bot")  # add the bot to the channel
     
     # Mock board
     board = Board(name="test-board")
@@ -43,11 +44,16 @@ async def test_read_channel_messages(mock_storage):
 
 @pytest.mark.asyncio
 async def test_post_channel_message(mock_storage):
-    """Test posting a message to a channel."""
+    """Test posting a message to a channel.
+    
+    Note: This method is still used internally by the system but is no longer
+    exposed as a tool to bots. Bots now return responses directly without
+    needing to call this tool.
+    """
     tools = BotTools(storage=mock_storage)
     result = await tools.post_channel_message("test-channel", "New message", "bot")
     
-    assert "Message posted to #test-channel" in result
+    assert "message posted to #test-channel" in result
     mock_storage.load_channel.assert_called_once_with("test-channel")
     mock_storage.save_channel.assert_called_once()
 

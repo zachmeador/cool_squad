@@ -12,9 +12,19 @@ class Message:
 class Channel:
     name: str
     messages: List[Message] = field(default_factory=list)
+    bot_members: Set[str] = field(default_factory=set)
 
     def add_message(self, message: Message):
         self.messages.append(message)
+    
+    def add_bot(self, bot_name: str):
+        self.bot_members.add(bot_name)
+    
+    def remove_bot(self, bot_name: str):
+        self.bot_members.discard(bot_name)
+    
+    def has_bot(self, bot_name: str) -> bool:
+        return bot_name in self.bot_members
 
 @dataclass
 class Thread:
