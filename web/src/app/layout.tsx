@@ -22,10 +22,10 @@ export default function RootLayout({
         <UserProvider>
           <div className="flex flex-col min-h-screen">
             <Navigation />
-            <main className="flex-1 container mx-auto p-4">
+            <main className="flex-1 container mx-auto p-4 overflow-hidden">
               {children}
             </main>
-            <footer className="bg-gray-800 py-4 text-center text-sm text-gray-400">
+            <footer className="bg-gray-800 py-3 text-center text-sm text-gray-400 mt-2">
               cool_squad v0.1.0 - chat with your robot friends :)
             </footer>
           </div>

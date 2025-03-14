@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useUser } from '@/lib/user-context';
 // import { useChatWebSocket } from '@/lib/websocket';
 import { useChatSSE } from '@/lib/sse';
-import { getChannels } from '@/lib/api';
+import { getChannels, getChannelBots } from '@/lib/api';
+import ChannelBots from '@/components/ChannelBots';
 
 export default function ChatPage() {
   const { username, isLoggedIn } = useUser();
@@ -15,6 +16,9 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [apiError, setApiError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [channelBots, setChannelBots] = useState<string[]>([]);
   
   // Replace WebSocket with SSE
   const { connected, messages, sendMessage, error: sseError } = useChatSSE(
@@ -46,6 +50,19 @@ export default function ChatPage() {
     
     fetchChannels();
   }, []);
+  
+  // load channel bots when channel changes
+  useEffect(() => {
+    const loadBots = async () => {
+      try {
+        const bots = await getChannelBots(currentChannel);
+        setChannelBots(bots);
+      } catch (error) {
+        console.error('failed to load channel bots:', error);
+      }
+    };
+    loadBots();
+  }, [currentChannel]);
   
   // scroll to bottom when new messages arrive
   useEffect(() => {
@@ -103,6 +120,31 @@ export default function ChatPage() {
     return bots.includes(name.toLowerCase());
   };
   
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setMessageInput(value);
+    
+    // check for @ mentions
+    const lastAtIndex = value.lastIndexOf('@');
+    if (lastAtIndex !== -1) {
+      const query = value.slice(lastAtIndex + 1).toLowerCase();
+      const filtered = channelBots.filter(bot => 
+        bot.toLowerCase().startsWith(query)
+      );
+      setSuggestions(filtered);
+      setShowSuggestions(filtered.length > 0);
+    } else {
+      setShowSuggestions(false);
+    }
+  };
+  
+  const handleSuggestionClick = (bot: string) => {
+    const lastAtIndex = messageInput.lastIndexOf('@');
+    const newValue = messageInput.slice(0, lastAtIndex) + '@' + bot + ' ';
+    setMessageInput(newValue);
+    setShowSuggestions(false);
+  };
+  
   if (!isLoggedIn) {
     return (
       <div className="flex flex-col items-center justify-center h-[70vh]">
@@ -114,9 +156,9 @@ export default function ChatPage() {
   }
   
   return (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 h-[80vh]">
+    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 h-[calc(100vh-12rem)] max-h-[calc(100vh-12rem)]">
       {/* sidebar */}
-      <div className="bg-gray-800 p-4 rounded md:col-span-1 flex flex-col">
+      <div className="bg-gray-800 p-4 rounded md:col-span-1 flex flex-col overflow-hidden">
         <div className="flex justify-between items-center mb-4">
           <h2 className="font-bold">channels</h2>
           <div className="connection-status">
@@ -179,17 +221,13 @@ export default function ChatPage() {
       </div>
       
       {/* chat area */}
-      <div className="bg-gray-800 border border-gray-700 rounded p-4 md:col-span-3 flex flex-col h-full">
-        <div className="mb-4 pb-2 border-b border-gray-700 flex justify-between items-center">
+      <div className="md:col-span-3 flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between mb-2">
           <h2 className="font-bold">#{currentChannel}</h2>
-          {!connected && (
-            <div className="text-yellow-400 text-xs">
-              disconnected
-            </div>
-          )}
+          <ChannelBots channelName={currentChannel} />
         </div>
         
-        <div className="flex-1 overflow-y-auto mb-4">
+        <div className="flex-1 overflow-y-auto bg-gray-800 rounded p-4 min-h-0">
           {sseError && (
             <div className="bg-red-900 border-l-4 border-red-600 text-red-200 p-3 mb-4 text-sm">
               {sseError}
@@ -229,28 +267,48 @@ export default function ChatPage() {
                   </div>
                 </div>
               ))}
-              <div ref={messagesEndRef} />
+              <div ref={messagesEndRef} className="h-4" />
             </div>
           )}
         </div>
         
-        <form onSubmit={handleSendMessage} className="flex gap-2">
-          <input
-            type="text"
-            value={messageInput}
-            onChange={(e) => setMessageInput(e.target.value)}
-            placeholder={connected ? `message #${currentChannel}...` : 'disconnected...'}
-            className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded text-gray-200"
-            disabled={!connected}
-          />
-          <button 
-            type="submit"
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 disabled:bg-gray-600"
-            disabled={!connected || !messageInput.trim()}
-          >
-            send
-          </button>
-        </form>
+        <div className="mt-2">
+          <form onSubmit={handleSendMessage} className="flex flex-col gap-2">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={messageInput}
+                onChange={handleInputChange}
+                placeholder={connected ? `message #${currentChannel}...` : 'disconnected...'}
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-gray-200"
+                disabled={!connected}
+              />
+              
+              {showSuggestions && (
+                <div className="absolute bottom-full mb-1 w-full bg-gray-700 border border-gray-600 rounded shadow-lg">
+                  {suggestions.map(bot => (
+                    <button
+                      key={bot}
+                      onClick={() => handleSuggestionClick(bot)}
+                      className="w-full px-3 py-2 text-left hover:bg-gray-600 text-gray-200"
+                      type="button"
+                    >
+                      @{bot}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <button 
+              type="submit"
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 disabled:bg-gray-600"
+              disabled={!connected || !messageInput.trim()}
+            >
+              send
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );

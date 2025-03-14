@@ -289,4 +289,39 @@ export async function clearBotToolConsiderations(
   }
   
   return response.json();
+}
+
+export async function getChannelBots(channelName: string): Promise<string[]> {
+  const response = await fetch(`${API_BASE_URL}/channels/${channelName}/bots`, createFetchOptions());
+  
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`failed to fetch bots for channel ${channelName}: ${response.status} - ${errorText}`);
+  }
+  
+  return response.json();
+}
+
+export async function addBotToChannel(channelName: string, botName: string): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/channels/${channelName}/bots/${botName}`,
+    createFetchOptions({ method: 'POST' })
+  );
+  
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`failed to add bot ${botName} to channel ${channelName}: ${response.status} - ${errorText}`);
+  }
+}
+
+export async function removeBotFromChannel(channelName: string, botName: string): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/channels/${channelName}/bots/${botName}`,
+    createFetchOptions({ method: 'DELETE' })
+  );
+  
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`failed to remove bot ${botName} from channel ${channelName}: ${response.status} - ${errorText}`);
+  }
 } 
