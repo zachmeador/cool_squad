@@ -1,40 +1,25 @@
 import asyncio
-import json
-from typing import Dict, Set, List
+from typing import Dict, List
 from cool_squad.core.models import Message, Channel
 from cool_squad.storage.storage import Storage
 from cool_squad.bots.base import create_default_bots, Bot
+from cool_squad.api.sse import broadcast_chat_message
 
 class ChatServer:
     def __init__(self, storage: Storage = None):
         self.storage = storage or Storage()
         self.channels: Dict[str, Channel] = {}
-        self.connections: Dict[str, Set] = {}
         self.bots: List[Bot] = create_default_bots()
-    
-    async def register(self, websocket, channel_name: str):
-        """Register a websocket connection for a channel."""
-        if channel_name not in self.connections:
-            self.connections[channel_name] = set()
-        self.connections[channel_name].add(websocket)
         
-        if channel_name not in self.channels:
+        # load existing channels from storage
+        for channel_name in self.storage.list_channels():
             self.channels[channel_name] = self.storage.load_channel(channel_name)
     
-    async def unregister(self, websocket, channel_name: str):
-        """Unregister a websocket connection for a channel."""
-        if channel_name in self.connections:
-            self.connections[channel_name].discard(websocket)
-    
-    async def broadcast(self, channel_name: str, message: dict):
-        """Broadcast a message to all connected clients for a channel."""
-        if channel_name in self.connections:
-            for connection in self.connections[channel_name].copy():
-                try:
-                    await connection.send_json(message)
-                except Exception:
-                    # Connection might be closed or invalid
-                    self.connections[channel_name].discard(connection)
+    def get_or_create_channel(self, channel_name: str) -> Channel:
+        """Get or create a channel."""
+        if channel_name not in self.channels:
+            self.channels[channel_name] = self.storage.load_channel(channel_name)
+        return self.channels[channel_name]
     
     async def handle_bot_mentions(self, message: Message, channel_name: str) -> List[Message]:
         """Check for bot mentions and generate responses."""
@@ -55,70 +40,32 @@ class ChatServer:
         """Handle bot mentions and broadcast responses."""
         bot_responses = await self.handle_bot_mentions(message, channel_name)
         for response in bot_responses:
-            self.channels[channel_name].add_message(response)
-            self.storage.save_channel(self.channels[channel_name])
+            channel = self.get_or_create_channel(channel_name)
+            channel.add_message(response)
+            self.storage.save_channel(channel)
             
             # Broadcast via SSE
-            from cool_squad.api.sse import broadcast_chat_message
             await broadcast_chat_message(channel_name, {
                 "content": response.content,
                 "author": response.author,
                 "timestamp": response.timestamp
             })
-
-    async def handle_connection(self, websocket, channel_name: str):
-        """Handle a FastAPI WebSocket connection"""
-        # Accept the connection
-        await websocket.accept()
+    
+    async def handle_message(self, channel_name: str, content: str, author: str):
+        """Handle a new message in a channel."""
+        channel = self.get_or_create_channel(channel_name)
         
-        # Register the connection
-        if channel_name not in self.connections:
-            self.connections[channel_name] = set()
-        self.connections[channel_name].add(websocket)
-
-        if channel_name not in self.channels:
-            self.channels[channel_name] = self.storage.load_channel(channel_name)
+        # Create and save the message
+        message = Message(content=content, author=author)
+        channel.add_message(message)
+        self.storage.save_channel(channel)
         
-        try:
-            # Send channel history
-            channel = self.channels[channel_name]
-            for msg in channel.messages[-50:]:  # Send last 50 messages
-                await websocket.send_json({
-                    "type": "message",
-                    "channel": channel_name,
-                    "content": msg.content,
-                    "author": msg.author,
-                    "timestamp": msg.timestamp
-                })
-            
-            # Handle incoming messages
-            while True:
-                data = await websocket.receive_json()
-                
-                if data["type"] == "message":
-                    msg = Message(
-                        content=data["content"],
-                        author=data["author"]
-                    )
-                    
-                    self.channels[channel_name].add_message(msg)
-                    self.storage.save_channel(self.channels[channel_name])
-                    
-                    # Broadcast to all clients
-                    await self.broadcast(channel_name, {
-                        "type": "message",
-                        "channel": channel_name,
-                        "content": msg.content,
-                        "author": msg.author,
-                        "timestamp": msg.timestamp
-                    })
-                    
-                    # Handle bot responses
-                    asyncio.create_task(self.handle_bot_mentions_and_broadcast(msg, channel_name))
-        except Exception:
-            # Handle disconnection
-            pass
-        finally:
-            # Unregister the connection
-            if channel_name in self.connections:
-                self.connections[channel_name].discard(websocket) 
+        # Broadcast via SSE
+        await broadcast_chat_message(channel_name, {
+            "content": message.content,
+            "author": message.author,
+            "timestamp": message.timestamp
+        })
+        
+        # Handle bot responses
+        asyncio.create_task(self.handle_bot_mentions_and_broadcast(message, channel_name)) 

@@ -21,7 +21,15 @@ logger.setLevel(logging.INFO)
 # Custom JSON encoder to handle non-serializable objects
 class LLMLogEncoder(json.JSONEncoder):
     def default(self, obj):
-        # Handle specific OpenAI objects
+        # Handle datetime objects
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+            
+        # Handle OpenAI chat completion objects
+        if hasattr(obj, 'model_dump'):
+            return obj.model_dump()
+            
+        # Handle other OpenAI objects
         if hasattr(obj, '__dict__'):
             return obj.__dict__
         
@@ -54,8 +62,9 @@ def setup_logging(log_file: Optional[str] = None):
     file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(logging.INFO)
     
-    # Create a formatter
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    # Create a formatter with human readable timestamp
+    formatter = logging.Formatter('%(asctime)s.%(msecs)03d - %(name)s - %(levelname)s - %(message)s', 
+                                datefmt='%Y-%m-%d %H:%M:%S')
     file_handler.setFormatter(formatter)
     
     # Add the handler to the logger
@@ -83,7 +92,8 @@ def serialize_tool_call(tool_call):
     }
 
 def log_api_call(provider: str, model: str, messages: list, response: Any, 
-                 tools: Optional[list] = None, tool_calls: Optional[list] = None):
+                 tools: Optional[list] = None, tool_calls: Optional[list] = None,
+                 complexity_info: Optional[Dict[str, Any]] = None):
     """
     Log an LLM API call to the log file.
     
@@ -94,11 +104,13 @@ def log_api_call(provider: str, model: str, messages: list, response: Any,
         response: The response from the API
         tools: Optional tools provided to the API
         tool_calls: Optional tool calls from the response
+        complexity_info: Optional complexity analysis information
     """
     try:
-        # Create log entry
+        # Create log entry with human readable timestamp
+        now = datetime.now()
         log_entry = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
             "provider": provider,
             "model": model,
             "request": {
@@ -106,12 +118,20 @@ def log_api_call(provider: str, model: str, messages: list, response: Any,
             }
         }
         
-        # Add response summary if available
-        if hasattr(response, "choices") and response.choices:
-            log_entry["response_summary"] = {
-                "content_length": len(response.choices[0].message.content or "") if hasattr(response.choices[0].message, "content") else 0,
-                "finish_reason": response.choices[0].finish_reason if hasattr(response.choices[0], "finish_reason") else None,
-            }
+        # Add complexity info if available
+        if complexity_info:
+            log_entry["complexity"] = complexity_info
+        
+        # Log full response object
+        if response:
+            log_entry["response_full"] = response
+            
+            # Add response summary if available
+            if hasattr(response, "choices") and response.choices:
+                log_entry["response_summary"] = {
+                    "content_length": len(response.choices[0].message.content or "") if hasattr(response.choices[0].message, "content") else 0,
+                    "finish_reason": response.choices[0].finish_reason if hasattr(response.choices[0], "finish_reason") else None,
+                }
         
         # Add usage if available
         prompt_tokens = 0
@@ -157,7 +177,7 @@ def log_api_call(provider: str, model: str, messages: list, response: Any,
             log_entry["response_summary"]["tool_calls"] = tool_calls
         
         # Log the entry using the custom encoder
-        logger.info(json.dumps(log_entry, cls=LLMLogEncoder))
+        logger.info(json.dumps(log_entry, cls=LLMLogEncoder, indent=2))
     except Exception as e:
         # If there's an error in logging, log the error but don't crash the application
         logger.error(f"Error logging API call: {str(e)}")

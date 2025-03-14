@@ -105,6 +105,27 @@ class BoardServer:
     def __init__(self, storage: Storage):
         self.storage = storage
         self.boards: Dict[str, Board] = {}
+        
+        # load existing boards from storage
+        for board in self.storage.list_boards():
+            self.boards[board.name] = board
+    
+    def list_boards(self) -> List[Board]:
+        """List all available boards."""
+        return list(self.boards.values())
+
+    def get_board(self, board_name: str) -> Optional[Board]:
+        """Get a board by name."""
+        if board_name not in self.boards:
+            board = self.storage.load_board(board_name)
+            if board:
+                self.boards[board_name] = board
+        return self.boards.get(board_name)
+
+    def save_board(self, board: Board):
+        """Save a board to storage."""
+        self.boards[board.name] = board
+        self.storage.save_board(board)
     
     async def broadcast_board_update(self, board_name: str):
         """Broadcast board update to all connected clients"""
@@ -114,4 +135,4 @@ class BoardServer:
     async def broadcast_thread_update(self, board_name: str, thread_id: str):
         """Broadcast thread update to all connected clients"""
         from cool_squad.api.sse import broadcast_thread_update
-        await broadcast_thread_update(board_name, thread_id) 
+        await broadcast_thread_update(board_name, thread_id)

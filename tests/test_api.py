@@ -3,33 +3,40 @@ from fastapi.testclient import TestClient
 import os
 import shutil
 import tempfile
+from fastapi import Depends
 
 from cool_squad.main import app
 from cool_squad.storage.storage import Storage
 from cool_squad.core.models import Channel, Message
+from cool_squad.server.board import BoardServer
+from cool_squad.api.routes import get_storage
 
 @pytest.fixture
 def test_client():
-    return TestClient(app)
+    # create a temporary directory that gets auto-cleaned
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # set data directory to temp dir
+        os.environ["COOL_SQUAD_DATA_DIR"] = temp_dir
+        
+        # initialize storage with temp directory
+        storage = Storage(temp_dir)
+        
+        # override storage dependency
+        app.dependency_overrides[get_storage] = lambda: storage
+        
+        yield TestClient(app)
+        
+        # cleanup overrides and env var
+        app.dependency_overrides.clear()
+        del os.environ["COOL_SQUAD_DATA_DIR"]
 
-@pytest.fixture
-def temp_data_dir():
-    # create a temporary directory for test data
-    temp_dir = tempfile.mkdtemp()
-    os.environ["COOL_SQUAD_DATA_DIR"] = temp_dir
-    
-    yield temp_dir
-    
-    # cleanup after test
-    shutil.rmtree(temp_dir)
-
-def test_get_channels_empty(test_client, temp_data_dir):
+def test_get_channels_empty(test_client):
     """Test getting channels when none exist"""
     response = test_client.get("/api/channels")
     assert response.status_code == 200
     assert response.json() == []
 
-def test_post_message_and_get_channel(test_client, temp_data_dir):
+def test_post_message_and_get_channel(test_client):
     """Test posting a message to a channel and then retrieving it"""
     # post a message to a new channel
     message_data = {
@@ -56,7 +63,7 @@ def test_post_message_and_get_channel(test_client, temp_data_dir):
     assert channel_data["messages"][0]["content"] == "test message"
     assert channel_data["messages"][0]["author"] == "test_user"
 
-def test_get_channels_after_creating(test_client, temp_data_dir):
+def test_get_channels_after_creating(test_client):
     """Test that channels list includes newly created channels"""
     # create a channel by posting a message
     message_data = {"content": "hello", "author": "user"}
@@ -74,7 +81,7 @@ def test_get_channels_after_creating(test_client, temp_data_dir):
     assert "channel1" in channels
     assert "channel2" in channels
 
-def test_boards_api(test_client, temp_data_dir):
+def test_boards_api(test_client):
     """Test the boards API endpoints"""
     # create a new thread with initial message
     thread_data = {

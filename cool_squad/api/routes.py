@@ -63,16 +63,13 @@ api_router = APIRouter(tags=["api"])
 # Include SSE router
 api_router.include_router(sse.router, prefix="/sse", tags=["sse"])
 
-# Initialize storage
-storage = Storage()
-
 # Dependency to get storage
 def get_storage():
-    return storage
+    return Storage()
 
 # Dependency to get chat server
-def get_chat_server():
-    return ChatServer()
+def get_chat_server(storage: Storage = Depends(get_storage)):
+    return ChatServer(storage)
 
 # Dependency to get board server
 def get_board_server(storage: Storage = Depends(get_storage)):
@@ -133,11 +130,11 @@ async def post_message(
     
     # Broadcast via SSE
     from cool_squad.api.sse import broadcast_chat_message
-    asyncio.create_task(broadcast_chat_message(channel_name, {
+    await broadcast_chat_message(channel_name, {
         "content": msg.content,
         "author": msg.author,
         "timestamp": msg.timestamp
-    }))
+    })
     
     # Handle bot responses
     asyncio.create_task(chat_server.handle_bot_mentions_and_broadcast(msg, channel_name))
@@ -151,7 +148,7 @@ async def post_message(
 @api_router.get("/boards", response_model=List[BoardModel])
 async def get_boards(board_server: BoardServer = Depends(get_board_server)):
     """Get list of all boards"""
-    boards = board_server.storage.list_boards()
+    boards = board_server.list_boards()
     return [BoardModel(
         name=board.name, 
         description=getattr(board, 'description', "")
@@ -160,7 +157,7 @@ async def get_boards(board_server: BoardServer = Depends(get_board_server)):
 @api_router.get("/boards/{board_name}", response_model=List[ThreadModel])
 async def get_board_threads(board_name: str, board_server: BoardServer = Depends(get_board_server)):
     """Get threads in a board"""
-    board = board_server.storage.load_board(board_name)
+    board = board_server.get_board(board_name)
     if not board:
         raise HTTPException(status_code=404, detail=f"Board {board_name} not found")
     
@@ -180,7 +177,7 @@ async def get_thread(
     board_server: BoardServer = Depends(get_board_server)
 ):
     """Get thread details including messages"""
-    board = board_server.storage.load_board(board_name)
+    board = board_server.get_board(board_name)
     if not board:
         raise HTTPException(status_code=404, detail=f"Board {board_name} not found")
     
@@ -213,7 +210,9 @@ async def create_thread(
     board_server: BoardServer = Depends(get_board_server)
 ):
     """Create a new thread with initial message"""
-    board = board_server.storage.load_board(board_name)
+    board = board_server.get_board(board_name)
+    if not board:
+        board = Board(name=board_name)
     
     msg = Message(
         content=request.first_message.content,
@@ -222,11 +221,10 @@ async def create_thread(
     )
     
     thread = board.create_thread(title=request.title, first_message=msg)
-    board_server.storage.save_board(board)
+    board_server.save_board(board)
     
     # Broadcast via SSE
-    from cool_squad.api.sse import broadcast_board_update
-    asyncio.create_task(broadcast_board_update(board_name))
+    asyncio.create_task(board_server.broadcast_board_update(board_name))
     
     # Convert to ThreadModel for response
     return ThreadModel(
@@ -246,7 +244,7 @@ async def post_thread_message(
     board_server: BoardServer = Depends(get_board_server)
 ):
     """Post a message to a thread"""
-    board = board_server.storage.load_board(board_name)
+    board = board_server.get_board(board_name)
     if not board:
         raise HTTPException(status_code=404, detail=f"Board {board_name} not found")
     
@@ -265,11 +263,10 @@ async def post_thread_message(
     )
     
     thread.add_message(msg)
-    board_server.storage.save_board(board)
+    board_server.save_board(board)
     
     # Broadcast via SSE
-    from cool_squad.api.sse import broadcast_thread_update
-    asyncio.create_task(broadcast_thread_update(board_name, thread_id))
+    asyncio.create_task(board_server.broadcast_thread_update(board_name, thread_id))
     
     return MessageModel(
         content=msg.content,

@@ -12,11 +12,16 @@ import asyncio
 import websockets
 from datetime import datetime
 from pathlib import Path
+import aiohttp
+import uuid
+from typing import Optional
 
 from cool_squad.storage.storage import Storage
 from cool_squad.core.config import ensure_data_dir, get_data_dir
 from cool_squad.core.models import Message
 
+# base url for api
+API_BASE_URL = "http://localhost:8000/api"
 
 def format_timestamp(timestamp):
     """Format a timestamp into a human-readable string."""
@@ -127,163 +132,104 @@ def print_boards(storage):
                     print(f"    [{format_timestamp(msg.timestamp)}] {msg.author}: {msg.content}")
 
 
-# Board client functionality
-async def receive_board_messages(websocket):
-    try:
-        while True:
-            message = await websocket.recv()
-            data = json.loads(message)
-            
-            if data["type"] == "threads":
-                print(f"\n=== Threads in {data['board']} ===")
-                for thread in data["threads"]:
-                    pinned = "📌 " if thread["pinned"] else ""
-                    tags = f" [{', '.join(thread['tags'])}]" if thread["tags"] else ""
-                    print(f"{pinned}#{thread['id']}: {thread['title']}{tags} ({thread['message_count']} messages)")
-                print("\nCommands: /view <id>, /new <title>, /quit")
-            
-            elif data["type"] == "thread_detail":
-                print(f"\n=== Thread: {data['title']} ===")
-                if data["tags"]:
-                    print(f"Tags: {', '.join(data['tags'])}")
-                print(f"{'📌 Pinned' if data['pinned'] else ''}")
-                print("-" * 40)
-                
-                for msg in data["messages"]:
-                    timestamp = datetime.fromtimestamp(msg["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
-                    print(f"[{timestamp}] {msg['author']}:")
-                    print(f"{msg['content']}")
-                    print("-" * 40)
-                
-                print("\nCommands: /reply <message>, /back, /pin, /tag <tag>, /quit")
-            
-            elif data["type"] == "new_thread":
-                print(f"\nNew thread created: #{data['thread']['id']}: {data['thread']['title']}")
-            
-            elif data["type"] == "new_message":
-                timestamp = datetime.fromtimestamp(data["message"]["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
-                print(f"\n[{timestamp}] {data['message']['author']}:")
-                print(f"{data['message']['content']}")
-                print("-" * 40)
-            
-            elif data["type"] == "thread_updated":
-                print(f"\nThread updated: #{data['thread']['id']}: {data['thread']['title']}")
-                
-    except websockets.exceptions.ConnectionClosed:
-        print("\nDisconnected from server")
-        sys.exit(0)
-
-
-async def send_board_messages(websocket, username, board):
-    current_thread = None
+class CLIClient:
+    def __init__(self, username: str, board: str):
+        self.username = username
+        self.board = board
+        self.client_id = str(uuid.uuid4())
+        self.running = True
     
-    try:
-        while True:
-            message = await asyncio.get_event_loop().run_in_executor(None, input)
-            
-            if message.lower() == "/quit":
-                await websocket.close()
-                return
-            
-            if current_thread is None:
-                # Board view commands
-                if message.lower().startswith("/view "):
-                    try:
-                        thread_id = int(message.split(" ", 1)[1])
-                        current_thread = thread_id
-                        await websocket.send(json.dumps({
-                            "type": "get_thread",
-                            "thread_id": thread_id
-                        }))
-                    except (ValueError, IndexError):
-                        print("Invalid thread ID. Usage: /view <id>")
-                
-                elif message.lower().startswith("/new "):
-                    try:
-                        title = message.split(" ", 1)[1]
-                        content = await asyncio.get_event_loop().run_in_executor(
-                            None, lambda: input("Enter your message: ")
-                        )
+    async def receive_board_messages(self):
+        """Receive messages from the board via SSE."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{API_BASE_URL}/board/{self.board}?client_id={self.client_id}",
+                    headers={"Accept": "text/event-stream"}
+                ) as response:
+                    async for line in response.content:
+                        if not self.running:
+                            break
                         
-                        await websocket.send(json.dumps({
-                            "type": "create_thread",
-                            "title": title,
-                            "content": content,
-                            "author": username
-                        }))
-                    except IndexError:
-                        print("Invalid title. Usage: /new <title>")
+                        line = line.decode().strip()
+                        if not line:
+                            continue
+                        
+                        if line.startswith("data: "):
+                            data = json.loads(line[6:])
+                            
+                            if data.get("type") == "board_update":
+                                print("\nBoard update:")
+                                for thread in data.get("board", {}).get("threads", []):
+                                    print(f"- {thread['title']} (by {thread['author']})")
+                            
+                            elif data.get("type") == "thread_update":
+                                thread = data.get("thread", {})
+                                print(f"\nThread update: {thread.get('title')}")
+                                for msg in thread.get("messages", []):
+                                    print(f"{msg['author']}: {msg['content']}")
+        except Exception as e:
+            print(f"error receiving messages: {e}")
+            self.running = False
+    
+    async def send_board_messages(self):
+        """Send messages to the board."""
+        try:
+            while self.running:
+                command = input("\nEnter command (t=new thread, r=reply, q=quit): ").strip().lower()
+                
+                if command == "q":
+                    self.running = False
+                    break
+                
+                elif command == "t":
+                    title = input("Thread title: ").strip()
+                    content = input("First message: ").strip()
+                    
+                    if not title or not content:
+                        print("title and message are required")
+                        continue
+                    
+                    async with aiohttp.ClientSession() as session:
+                        async with session.post(
+                            f"{API_BASE_URL}/boards/{self.board}/threads",
+                            json={
+                                "title": title,
+                                "message": content,
+                                "author": self.username
+                            }
+                        ) as response:
+                            if response.status != 200:
+                                print(f"error creating thread: {response.status}")
+                                continue
+                            print("thread created!")
+                
+                elif command == "r":
+                    thread_id = input("Thread ID: ").strip()
+                    content = input("Message: ").strip()
+                    
+                    if not thread_id or not content:
+                        print("thread id and message are required")
+                        continue
+                    
+                    async with aiohttp.ClientSession() as session:
+                        async with session.post(
+                            f"{API_BASE_URL}/boards/{self.board}/threads/{thread_id}/messages",
+                            json={
+                                "content": content,
+                                "author": self.username
+                            }
+                        ) as response:
+                            if response.status != 200:
+                                print(f"error sending message: {response.status}")
+                                continue
+                            print("message sent!")
                 
                 else:
-                    print("Unknown command. Available commands: /view <id>, /new <title>, /quit")
-            
-            else:
-                # Thread view commands
-                if message.lower() == "/back":
-                    current_thread = None
-                    # Refresh thread list
-                    await websocket.send(json.dumps({
-                        "type": "join",
-                        "board": board
-                    }))
-                
-                elif message.lower().startswith("/reply "):
-                    try:
-                        content = message.split(" ", 1)[1]
-                        await websocket.send(json.dumps({
-                            "type": "add_message",
-                            "thread_id": current_thread,
-                            "content": content,
-                            "author": username
-                        }))
-                    except IndexError:
-                        print("Invalid message. Usage: /reply <message>")
-                
-                elif message.lower() == "/pin":
-                    await websocket.send(json.dumps({
-                        "type": "update_thread",
-                        "thread_id": current_thread,
-                        "pinned": True
-                    }))
-                
-                elif message.lower().startswith("/tag "):
-                    try:
-                        tag = message.split(" ", 1)[1]
-                        await websocket.send(json.dumps({
-                            "type": "update_thread",
-                            "thread_id": current_thread,
-                            "tags": [tag]
-                        }))
-                    except IndexError:
-                        print("Invalid tag. Usage: /tag <tag>")
-                
-                else:
-                    print("Unknown command. Available commands: /reply <message>, /back, /pin, /tag <tag>, /quit")
-                
-    except (EOFError, KeyboardInterrupt):
-        await websocket.close()
-
-
-async def board_client(board, username):
-    """Interactive board client."""
-    try:
-        async with websockets.connect("ws://localhost:8766") as websocket:
-            # join board
-            await websocket.send(json.dumps({
-                "type": "join",
-                "board": board
-            }))
-            
-            print(f"Connected to board: {board}")
-            print("Loading threads...")
-            
-            await asyncio.gather(
-                receive_board_messages(websocket),
-                send_board_messages(websocket, username, board)
-            )
-    except ConnectionRefusedError:
-        print("Could not connect to server. Is it running?")
-        sys.exit(1)
+                    print("invalid command")
+        except Exception as e:
+            print(f"error sending messages: {e}")
+            self.running = False
 
 
 def cmd_explore(args):
@@ -343,53 +289,40 @@ def cmd_chat(args):
         print_channel_messages(storage, args.channel, args.limit)
 
 
-def cmd_board(args):
-    """Command to interact with message boards."""
-    try:
-        asyncio.run(board_client(args.board, args.username))
-    except KeyboardInterrupt:
-        print("\nGoodbye!")
-
-
-def main():
-    # Create the top-level parser
-    parser = argparse.ArgumentParser(description="Cool Squad CLI")
-    parser.add_argument("--data-dir", help="Path to data directory (default: _data)")
-    subparsers = parser.add_subparsers(dest="command", help="Command to run")
-    
-    # Create parser for the "explore" command
-    explore_parser = subparsers.add_parser("explore", help="Explore channels and boards")
-    explore_parser.add_argument("--channels-only", action="store_true", help="Only show channels")
-    explore_parser.add_argument("--boards-only", action="store_true", help="Only show boards")
-    explore_parser.add_argument("--channel", "-c", help="Specify a channel to view")
-    explore_parser.add_argument("--limit", "-l", type=int, default=10, help="Limit the number of messages to display (default: 10)")
-    
-    # Create parser for the "chat" command
-    chat_parser = subparsers.add_parser("chat", help="Interact with chat channels")
-    chat_parser.add_argument("--channel", "-c", required=True, help="Specify a channel to view or send a message to")
-    chat_parser.add_argument("--limit", "-l", type=int, default=10, help="Limit the number of messages to display (default: 10)")
-    chat_parser.add_argument("--send", "-s", help="Send a message to the specified channel")
-    chat_parser.add_argument("--author", "-a", default="cli_user", help="Author name for sent messages (default: cli_user)")
-    
-    # Create parser for the "board" command
-    board_parser = subparsers.add_parser("board", help="Interactive board client")
-    board_parser.add_argument("board", help="Board to join (e.g. general)")
-    board_parser.add_argument("username", help="Your username")
-    
-    # Parse arguments
+async def main():
+    parser = argparse.ArgumentParser(description="CLI client for cool_squad")
+    parser.add_argument("username", help="your username")
+    parser.add_argument("board", help="board to join")
     args = parser.parse_args()
     
-    # Handle commands
-    if args.command == "explore":
-        cmd_explore(args)
-    elif args.command == "chat":
-        cmd_chat(args)
-    elif args.command == "board":
-        cmd_board(args)
-    else:
-        # If no command is specified, show help
-        parser.print_help()
+    client = CLIClient(args.username, args.board)
+    
+    try:
+        # Register with the server
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{API_BASE_URL}/boards/{args.board}",
+                json={"client_id": client.client_id}
+            ) as response:
+                if response.status != 200:
+                    print(f"error registering with server: {response.status}")
+                    return
+        
+        # Start receiving and sending messages
+        await asyncio.gather(
+            client.receive_board_messages(),
+            client.send_board_messages()
+        )
+    except KeyboardInterrupt:
+        print("\nshutting down...")
+        client.running = False
+    except Exception as e:
+        print(f"error: {e}")
+        client.running = False
 
 
 if __name__ == "__main__":
-    main() 
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nshutting down...") 

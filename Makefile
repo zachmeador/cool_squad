@@ -1,4 +1,4 @@
-.PHONY: setup dev-install run dev stop update-kb run-cli test test-coverage test-verbose web-setup web-dev web-build help
+.PHONY: setup dev-install run dev stop stop-force update-kb run-cli test test-coverage test-verbose web-setup web-dev web-build clean clean-logs help
 
 #
 # environment setup
@@ -19,10 +19,16 @@ run:
 dev:
 	@echo "starting all servers in development mode..."
 	@mkdir -p logs
+	@$(MAKE) stop-force  # ensure no stray processes
 	@python -m cool_squad.main > logs/server.log 2>&1 & echo $$! > .server.pid
 	@cd web && bun run dev > ../logs/web.log 2>&1 & echo $$! > ../.web.pid
 	@echo "servers started! check logs/ directory for output"
 	@echo "use 'make stop' to shut down all servers"
+
+dev-restart:
+	@echo "restarting development servers..."
+	@$(MAKE) stop
+	@$(MAKE) dev
 
 stop:
 	@echo "stopping all servers..."
@@ -31,17 +37,28 @@ stop:
 	@pkill -f "next dev" 2>/dev/null || true
 	@echo "all servers stopped"
 
-#
-# client commands
-#
-run-cli:
-	python cli.py
+stop-force:
+	@echo "force stopping all potential server processes..."
+	@$(MAKE) stop
+	@pkill -f "cool_squad.main" 2>/dev/null || true
+	@pkill -f "python -m cool_squad" 2>/dev/null || true
+	@echo "killed any stray processes"
 
 #
-# knowledge base
+# cleanup commands
 #
-update-kb:
-	python -m cool_squad.main --update-knowledge
+clean-logs:
+	@echo "cleaning logs..."
+	@rm -rf logs/
+	@mkdir -p logs/
+	@echo "logs cleared"
+
+clean:
+	@echo "cleaning app state..."
+	@rm -rf _data/
+	@rm -rf .server.pid .web.pid
+	@$(MAKE) clean-logs
+	@echo "app state cleared"
 
 #
 # web frontend
@@ -56,17 +73,6 @@ web-build:
 	cd web && bun run build
 
 #
-# development tools
-#
-format:
-	black cool_squad tests
-
-sort-imports:
-	isort cool_squad tests
-
-lint: format sort-imports
-
-#
 # testing
 #
 test:
@@ -77,16 +83,6 @@ test-coverage:
 
 test-verbose:
 	pytest -v tests/
-
-#
-# cleanup
-#
-clean:
-	rm -rf build/ dist/ *.egg-info/
-	find . -type d -name __pycache__ -exec rm -rf {} +
-	find . -type f -name "*.pyc" -delete
-	rm -rf web/.next web/node_modules
-	rm -rf logs/ .server.pid .web.pid
 
 #
 # help
@@ -102,6 +98,11 @@ help:
 	@echo "    make run            - run the main server (fastapi server)"
 	@echo "    make dev            - start all servers in development mode"
 	@echo "    make stop           - stop all running servers"
+	@echo "    make stop-force     - force stop all potential server processes"
+	@echo ""
+	@echo "  cleanup:"
+	@echo "    make clean-logs     - clear all logs"
+	@echo "    make clean          - clear all app state"
 	@echo ""
 	@echo "  clients:"
 	@echo "    make run-cli        - run the CLI client"
@@ -123,6 +124,3 @@ help:
 	@echo "    make test           - run tests"
 	@echo "    make test-coverage  - run tests with coverage report"
 	@echo "    make test-verbose   - run tests with verbose output"
-	@echo ""
-	@echo "  cleanup:"
-	@echo "    make clean          - clean up generated files" 

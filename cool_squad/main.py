@@ -7,6 +7,7 @@ import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 import random
+from fastapi.middleware.cors import CORSMiddleware
 
 # Updated imports for new module structure
 from cool_squad.server.chat import ChatServer
@@ -101,8 +102,25 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "*"],  # Allow frontend origins explicitly
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Be explicit about allowed methods
+    allow_headers=["*"],  # Allow all headers
+    expose_headers=["Content-Type", "Content-Length"],  # Expose these headers to the browser
+)
+
+# Add global OPTIONS handler for preflight requests
+@app.options("/{rest_of_path:path}")
+async def options_handler(rest_of_path: str):
+    return {"detail": "OK"}
+
 # Add API router
 app.include_router(api_router, prefix="/api")
+# Add SSE router directly
+app.include_router(sse_router, prefix="/api")
 
 async def update_knowledge_base():
     """Update the knowledge base."""

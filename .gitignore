@@ -49,3 +49,4 @@ web/*.tsbuildinfo
 web/next-env.d.ts
 
 .server.pid
+web/bun.lock

@@ -135,4 +135,13 @@ class Storage:
             
             return board
         else:
-            return Board(name=board_name) 
+            return Board(name=board_name)
+    
+    def cleanup(self) -> None:
+        """Delete all stored data."""
+        for file in os.listdir(self.channels_dir):
+            if file.endswith(".json"):
+                os.remove(os.path.join(self.channels_dir, file))
+        for file in os.listdir(self.boards_dir):
+            if file.endswith(".json"):
+                os.remove(os.path.join(self.boards_dir, file)) 

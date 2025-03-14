@@ -8,9 +8,15 @@ from cool_squad.bots.tools import BotTools, CHANNEL_TOOLS, BOARD_TOOLS
 from cool_squad.utils.logging import log_api_call
 from cool_squad.utils.token_budget import get_token_budget_tracker
 from cool_squad.core.monologue import InternalMonologue
+from cool_squad.core.complexity import ComplexityManager, BotCharacteristics, Complexity
+import time
 
 # Initialize the OpenAI client
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Initialize complexity manager
+complexity_manager = ComplexityManager()
+complexity_manager.client = client
 
 @dataclass
 class Tool:
@@ -24,7 +30,7 @@ class Bot:
     name: str
     personality: str
     provider: str = "openai"  # provider: openai, anthropic, ollama, etc.
-    model: str = "gpt-4o"
+    model: str = "gpt-4o-mini-2024-07-18"
     temperature: float = 0.7
     tools: List[Tool] = field(default_factory=list)
     memory: List[Dict[str, str]] = field(default_factory=list)
@@ -33,10 +39,32 @@ class Bot:
     monologue: InternalMonologue = field(default_factory=InternalMonologue)
     use_monologue: bool = True
     debug_mode: bool = False  # When True, shows internal monologue in responses
+    characteristics: BotCharacteristics = field(default_factory=lambda: BotCharacteristics(
+        verbosity=0.7,  # moderately verbose by default
+        thoughtfulness=0.7  # moderately thoughtful by default
+    ))
+    last_thought_time: float = field(default_factory=lambda: time.time())
+    next_thought_time: float = field(default_factory=lambda: time.time() + 300)  # start with 5 min interval
 
     async def process_message(self, message: Message, channel: str) -> Optional[str]:
-        # Start internal monologue
-        if self.use_monologue:
+        # analyze message complexity first
+        analysis = await complexity_manager.analyze_message(message.content)
+        
+        # update thought timing based on complexity
+        current_time = time.time()
+        if current_time >= self.next_thought_time:
+            self.last_thought_time = current_time
+            self.next_thought_time = current_time + complexity_manager.get_thought_interval(analysis)
+        
+        # Start internal monologue if:
+        # 1. monologue is enabled AND
+        # 2. either it's time for a thought OR complexity > LOW
+        should_monologue = (
+            self.use_monologue and 
+            (current_time >= self.next_thought_time or analysis.complexity != Complexity.LOW)
+        )
+        
+        if should_monologue:
             self.monologue.add_thought(
                 f"Received message from {message.author} in #{channel}: '{message.content}'", 
                 category="input"
@@ -54,14 +82,14 @@ class Bot:
 
         # handle different providers
         if self.provider == "openai":
-            return await self._process_openai(messages, channel)
+            return await self._process_openai(messages, channel, analysis)
         # add other providers as needed
         # elif self.provider == "anthropic":
         #    return await self._process_anthropic(messages, channel)
         else:
             raise ValueError(f"Unsupported provider: {self.provider}")
     
-    async def _process_openai(self, messages, channel) -> Optional[str]:
+    async def _process_openai(self, messages, channel, analysis) -> Optional[str]:
         # Check if we should respect budget limits
         if self.respect_budget:
             # Get token budget tracker
@@ -86,27 +114,26 @@ class Bot:
                 if budget.monthly_limit and token_tracker.monthly_usage.get(self.provider, {}).get(self.model, 0) >= budget.monthly_limit:
                     return f"[Budget Limit] I'm unable to respond as the monthly token budget for {self.model} has been reached."
         
+        # Calculate token limit based on complexity and characteristics
+        max_tokens = complexity_manager.get_token_limit(analysis, self.characteristics)
+        
         # If using monologue and we have tools, first generate internal thinking
-        if self.use_monologue and self.tools:
+        if self.use_monologue and self.tools and analysis.requires_tools:
             await self._generate_internal_monologue(messages[-1]["content"])
             
             # Add monologue to the system message for context
             monologue_prompt = f"\n\nYour recent thoughts:\n{self.monologue.format_for_prompt()}"
-            
-            # Create a copy of messages to avoid modifying the original
             messages_with_monologue = messages.copy()
             messages_with_monologue[0] = {
                 "role": "system", 
                 "content": messages[0]["content"] + monologue_prompt
             }
-            
-            # Use the messages with monologue for the API call
             api_messages = messages_with_monologue
         else:
             api_messages = messages
         
-        # if we have tools, use function calling
-        if self.tools:
+        # if we have tools and complexity requires them, use function calling
+        if self.tools and analysis.requires_tools:
             tool_definitions = [{
                 "type": "function",
                 "function": {
@@ -120,57 +147,44 @@ class Bot:
                 model=self.model,
                 messages=api_messages,
                 tools=tool_definitions,
-                temperature=self.temperature
+                temperature=self.temperature,
+                max_tokens=max_tokens
             )
-            
-            # Log the API call
-            log_api_call(
-                provider=self.provider,
-                model=self.model,
-                messages=api_messages,
-                response=response,
-                tools=tool_definitions,
-                tool_calls=response.choices[0].message.tool_calls if hasattr(response.choices[0].message, "tool_calls") else None
-            )
-            
-            # Check if we exceeded budget after the call
-            if self.respect_budget and hasattr(response, "usage"):
-                token_tracker = get_token_budget_tracker()
-                within_budget, _ = token_tracker.add_usage(
-                    provider=self.provider,
-                    model=self.model,
-                    prompt_tokens=response.usage.prompt_tokens,
-                    completion_tokens=response.usage.completion_tokens
-                )
-                if not within_budget:
-                    # We already logged the API call, but we won't process tool calls or make additional API calls
-                    return response.choices[0].message.content or "[Budget Limit] Token budget exceeded during processing."
         else:
             response = await client.chat.completions.create(
                 model=self.model,
                 messages=api_messages,
-                temperature=self.temperature
+                temperature=self.temperature,
+                max_tokens=max_tokens
             )
-            
-            # Log the API call
-            log_api_call(
+        
+        # Log the API call with complexity info
+        log_api_call(
+            provider=self.provider,
+            model=self.model,
+            messages=api_messages,
+            response=response,
+            tools=tool_definitions if self.tools and analysis.requires_tools else None,
+            tool_calls=response.choices[0].message.tool_calls if hasattr(response.choices[0].message, "tool_calls") else None,
+            complexity_info={
+                "level": analysis.complexity.value,
+                "requires_tools": analysis.requires_tools,
+                "context_tags": analysis.context_tags,
+                "max_tokens": max_tokens
+            }
+        )
+        
+        # Check if we exceeded budget after the call
+        if self.respect_budget and hasattr(response, "usage"):
+            token_tracker = get_token_budget_tracker()
+            within_budget, _ = token_tracker.add_usage(
                 provider=self.provider,
                 model=self.model,
-                messages=api_messages,
-                response=response
+                prompt_tokens=response.usage.prompt_tokens,
+                completion_tokens=response.usage.completion_tokens
             )
-            
-            # Check if we exceeded budget after the call
-            if self.respect_budget and hasattr(response, "usage"):
-                token_tracker = get_token_budget_tracker()
-                within_budget, _ = token_tracker.add_usage(
-                    provider=self.provider,
-                    model=self.model,
-                    prompt_tokens=response.usage.prompt_tokens,
-                    completion_tokens=response.usage.completion_tokens
-                )
-                if not within_budget:
-                    return response.choices[0].message.content or "[Budget Limit] Token budget exceeded during processing."
+            if not within_budget:
+                return response.choices[0].message.content or "[Budget Limit] Token budget exceeded during processing."
 
         # handle function calls if any
         message = response.choices[0].message

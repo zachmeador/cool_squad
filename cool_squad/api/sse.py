@@ -96,12 +96,48 @@ async def sse_endpoint(request: Request, channel: str, client_id: str):
         new_channel = Channel(name=channel)
         storage.save_channel(new_channel)
     
+    # Handle CORS preflight request
+    if request.method == "OPTIONS":
+        headers = {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "86400",  # 24 hours
+        }
+        return Response(headers=headers)
+    
     event_generator_instance = event_generator(request, channel, client_id)
-    return EventSourceResponse(event_generator_instance)
+    
+    # Use StreamingResponse instead of EventSourceResponse for better CORS handling
+    return StreamingResponse(
+        content=event_generator_instance,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "X-Accel-Buffering": "no",  # Disable buffering for nginx
+        }
+    )
 
 @router.post("/channels/{channel}/messages")
 async def post_message(channel: str, message: dict):
     """Post a message to a channel."""
+    if not channel:
+        raise HTTPException(status_code=400, detail="Channel is required")
+    
+    if "content" not in message or "author" not in message:
+        raise HTTPException(status_code=400, detail="Content and author are required")
+    
+    # Create message object
+    msg = {
+        "content": message["content"],
+        "author": message["author"],
+        "timestamp": time.time()
+    }
+    
     # Load the channel
     channel_data = storage.load_channel(channel)
     if not channel_data:
@@ -109,25 +145,19 @@ async def post_message(channel: str, message: dict):
         channel_data = Channel(name=channel)
     
     # Create and add the message
-    msg = Message(
+    channel_msg = Message(
         content=message["content"],
         author=message["author"]
     )
-    channel_data.add_message(msg)
+    channel_data.add_message(channel_msg)
     
     # Save the channel
     storage.save_channel(channel_data)
     
-    # Broadcast the message to all clients
-    await broadcast_to_channel(channel, {
-        "type": "message",
-        "channel": channel,
-        "content": msg.content,
-        "author": msg.author,
-        "timestamp": msg.timestamp
-    })
+    # Broadcast message to all clients
+    await broadcast_chat_message(channel, msg)
     
-    return {"status": "success"}
+    return {"status": "message sent"}
 
 @router.get("/channels")
 async def get_channels():
@@ -236,9 +266,6 @@ async def sse_chat(
     chat_queues[channel][client_id] = queue
     connected_chat_clients[channel].add(client_id)
     
-    # Add background task to send pings
-    background_tasks.add_task(ping_client, queue)
-    
     # Send message history
     if channel in chat_messages and chat_messages[channel]:
         await queue.put(format_sse_message({
@@ -251,11 +278,23 @@ async def sse_chat(
     async def event_generator():
         try:
             while True:
-                # Wait for messages
-                message = await queue.get()
-                yield message
+                if await request.is_disconnected():
+                    break
+                
+                try:
+                    # Try to get a message from the queue with a timeout
+                    message = await asyncio.wait_for(queue.get(), timeout=1.0)
+                    yield message
+                except asyncio.TimeoutError:
+                    # Send a ping every second to keep the connection alive
+                    yield format_sse_message("", event="ping")
+                except Exception as e:
+                    logger.error(f"Error in event generator: {e}")
+                    break
         except asyncio.CancelledError:
-            # Client disconnected
+            logger.info(f"Client {client_id} connection cancelled")
+        finally:
+            # Clean up when the client disconnects
             if channel in chat_queues and client_id in chat_queues[channel]:
                 del chat_queues[channel][client_id]
                 connected_chat_clients[channel].discard(client_id)
@@ -268,6 +307,9 @@ async def sse_chat(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "X-Accel-Buffering": "no",  # Disable buffering for nginx
         }
     )
 
@@ -294,9 +336,6 @@ async def sse_board(
     board_queues[board_id][client_id] = queue
     connected_board_clients[board_id].add(client_id)
     
-    # Add background task to send pings
-    background_tasks.add_task(ping_client, queue)
-    
     # Send initial board data
     await queue.put(format_sse_message({
         "type": "board_update",
@@ -308,11 +347,23 @@ async def sse_board(
     async def event_generator():
         try:
             while True:
-                # Wait for messages
-                message = await queue.get()
-                yield message
+                if await request.is_disconnected():
+                    break
+                
+                try:
+                    # Try to get a message from the queue with a timeout
+                    message = await asyncio.wait_for(queue.get(), timeout=1.0)
+                    yield message
+                except asyncio.TimeoutError:
+                    # Send a ping every second to keep the connection alive
+                    yield format_sse_message("", event="ping")
+                except Exception as e:
+                    logger.error(f"Error in event generator: {e}")
+                    break
         except asyncio.CancelledError:
-            # Client disconnected
+            logger.info(f"Client {client_id} connection cancelled")
+        finally:
+            # Clean up when the client disconnects
             if board_id in board_queues and client_id in board_queues[board_id]:
                 del board_queues[board_id][client_id]
                 connected_board_clients[board_id].discard(client_id)
@@ -325,32 +376,11 @@ async def sse_board(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "X-Accel-Buffering": "no",  # Disable buffering for nginx
         }
     )
-
-# Endpoint to post a message to a chat channel
-@router.post("/channels/{channel}/messages")
-async def post_message(
-    channel: str,
-    message: dict
-):
-    if not channel:
-        raise HTTPException(status_code=400, detail="Channel is required")
-    
-    if "content" not in message or "author" not in message:
-        raise HTTPException(status_code=400, detail="Content and author are required")
-    
-    # Create message object
-    msg = {
-        "content": message["content"],
-        "author": message["author"],
-        "timestamp": time.time()
-    }
-    
-    # Broadcast message to all clients
-    await broadcast_chat_message(channel, msg)
-    
-    return {"status": "message sent"}
 
 # Endpoint to create a new thread in a board
 @router.post("/boards/{board_id}/threads")

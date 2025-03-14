@@ -4,9 +4,26 @@ Tests for the bot functionality of cool_squad.
 
 import pytest
 import asyncio
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, AsyncMock
 from cool_squad.bots.base import Bot
 from cool_squad.core.models import Message
+import json
+from cool_squad.core.complexity import ComplexityAnalysis, Complexity
+import respx
+import httpx
+
+
+@pytest.fixture
+def mock_complexity_analysis():
+    """Mock the complexity analysis to always return low complexity."""
+    with patch('cool_squad.bots.base.complexity_manager.analyze_message') as mock:
+        mock.return_value = ComplexityAnalysis(
+            complexity=Complexity.LOW,
+            requires_tools=False,
+            context_tags=["general"],
+            base_tokens=100
+        )
+        yield mock
 
 
 @pytest.fixture
@@ -31,22 +48,29 @@ async def test_bot_initialization():
 
 
 @pytest.mark.asyncio
-async def test_process_message(test_bot):
+async def test_process_message(test_bot, mock_complexity_analysis):
     """Test that a bot can process a message and generate a response."""
-    # Mock the OpenAI API
-    with patch('cool_squad.bots.base.client') as mock_openai:
-        # Set up the mock to return a response
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "Test response: How are you?"
-        mock_response.choices[0].message.tool_calls = None
-        
-        # Create a mock async method
-        async def mock_create(*args, **kwargs):
-            return mock_response
-        
-        # Set up the mock chat completions create method
-        mock_openai.chat.completions.create = mock_create
+    with respx.mock:
+        # Mock the OpenAI API response
+        respx.post("https://api.openai.com/v1/chat/completions").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "choices": [{
+                        "message": {
+                            "content": "Test response: How are you?",
+                            "role": "assistant",
+                            "tool_calls": None
+                        }
+                    }],
+                    "usage": {
+                        "prompt_tokens": 50,
+                        "completion_tokens": 20,
+                        "total_tokens": 70
+                    }
+                }
+            )
+        )
         
         # Create a test message
         message = Message(content="How are you?", author="test_user")
@@ -57,7 +81,7 @@ async def test_process_message(test_bot):
         # Verify the response
         assert response == "Test response: How are you?"
         
-        # Verify the messages were added to the bot's memory (user message and assistant response)
+        # Verify the messages were added to the bot's memory
         assert len(test_bot.memory) == 2
         assert test_bot.memory[0]["role"] == "user"
         assert test_bot.memory[0]["content"].startswith("[#test_channel] test_user: How are you?")
@@ -66,22 +90,29 @@ async def test_process_message(test_bot):
 
 
 @pytest.mark.asyncio
-async def test_memory_management(test_bot):
+async def test_memory_management(test_bot, mock_complexity_analysis):
     """Test that a bot can manage its memory correctly."""
-    # Mock the OpenAI API
-    with patch('cool_squad.bots.base.client') as mock_openai:
-        # Set up the mock to return a response
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "Test response"
-        mock_response.choices[0].message.tool_calls = None
-        
-        # Create a mock async method
-        async def mock_create(*args, **kwargs):
-            return mock_response
-        
-        # Set up the mock chat completions create method
-        mock_openai.chat.completions.create = mock_create
+    with respx.mock:
+        # Mock the OpenAI API response
+        respx.post("https://api.openai.com/v1/chat/completions").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "choices": [{
+                        "message": {
+                            "content": "Test response",
+                            "role": "assistant",
+                            "tool_calls": None
+                        }
+                    }],
+                    "usage": {
+                        "prompt_tokens": 50,
+                        "completion_tokens": 20,
+                        "total_tokens": 70
+                    }
+                }
+            )
+        )
         
         # Create test messages
         for i in range(60):  # Create more messages than max_memory
@@ -89,7 +120,6 @@ async def test_memory_management(test_bot):
             await test_bot.process_message(message, "test_channel")
         
         # Verify the memory size is limited by max_memory
-        # Each message adds 2 entries (user + assistant), so we expect 2 * max_memory entries
         assert len(test_bot.memory) <= 2 * test_bot.max_memory
         
         # Verify the most recent messages are kept
@@ -104,22 +134,29 @@ async def test_memory_management(test_bot):
 
 
 @pytest.mark.asyncio
-async def test_different_channels(test_bot):
+async def test_different_channels(test_bot, mock_complexity_analysis):
     """Test that a bot can handle messages from different channels."""
-    # Mock the OpenAI API
-    with patch('cool_squad.bots.base.client') as mock_openai:
-        # Set up the mock to return a response
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "Test response"
-        mock_response.choices[0].message.tool_calls = None
-        
-        # Create a mock async method
-        async def mock_create(*args, **kwargs):
-            return mock_response
-        
-        # Set up the mock chat completions create method
-        mock_openai.chat.completions.create = mock_create
+    with respx.mock:
+        # Mock the OpenAI API response
+        respx.post("https://api.openai.com/v1/chat/completions").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "choices": [{
+                        "message": {
+                            "content": "Test response",
+                            "role": "assistant",
+                            "tool_calls": None
+                        }
+                    }],
+                    "usage": {
+                        "prompt_tokens": 50,
+                        "completion_tokens": 20,
+                        "total_tokens": 70
+                    }
+                }
+            )
+        )
         
         # Process messages from different channels
         message1 = Message(content="Message in channel 1", author="user1")
