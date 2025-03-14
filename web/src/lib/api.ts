@@ -64,118 +64,87 @@ export interface BotInfo {
 // api base url
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
-// mock data for development when backend is not available
-const MOCK_CHANNELS = ['welcome', 'general', 'random', 'bots'];
-const MOCK_BOARDS = [
-  { id: 'general', name: 'General Discussion', description: 'Talk about anything' },
-  { id: 'tech', name: 'Technology', description: 'Discuss tech topics' },
-  { id: 'random', name: 'Random', description: 'Random stuff' }
-];
+// helper function to create fetch options with timeout
+const createFetchOptions = (options: RequestInit = {}, timeoutMs = 5000): RequestInit => {
+  return {
+    ...options,
+    signal: AbortSignal.timeout(timeoutMs),
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
+    }
+  };
+};
 
 // api functions
 export async function getChannels(): Promise<string[]> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/channels`);
-    if (!response.ok) throw new Error('failed to fetch channels');
-    return response.json();
-  } catch (error) {
-    console.error('Error fetching channels:', error);
-    return MOCK_CHANNELS;
+  console.log('fetching channels from:', `${API_BASE_URL}/channels`);
+  const response = await fetch(`${API_BASE_URL}/channels`, createFetchOptions());
+  
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`failed to fetch channels: ${response.status} - ${errorText}`);
   }
+  
+  return response.json();
 }
 
 export async function getChannel(channelName: string): Promise<Channel> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/channels/${channelName}`);
-    if (!response.ok) throw new Error(`failed to fetch channel ${channelName}`);
-    return response.json();
-  } catch (error) {
-    console.error(`Error fetching channel ${channelName}:`, error);
-    return {
-      name: channelName,
-      messages: [
-        {
-          content: 'This is mock data since the backend is not available.',
-          author: 'system',
-          timestamp: new Date().toISOString()
-        }
-      ]
-    };
+  const response = await fetch(`${API_BASE_URL}/channels/${channelName}`, createFetchOptions());
+  
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`failed to fetch channel ${channelName}: ${response.status} - ${errorText}`);
   }
+  
+  return response.json();
 }
 
 export async function postMessage(channelName: string, message: Omit<Message, 'timestamp'>): Promise<Message> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/channels/${channelName}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(message),
-    });
-    if (!response.ok) throw new Error(`failed to post message to ${channelName}`);
-    return response.json();
-  } catch (error) {
-    console.error(`Error posting message to ${channelName}:`, error);
-    return {
-      ...message,
-      timestamp: new Date().toISOString()
-    };
+  const response = await fetch(`${API_BASE_URL}/channels/${channelName}/messages`, createFetchOptions({
+    method: 'POST',
+    body: JSON.stringify(message),
+  }));
+  
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`failed to post message to ${channelName}: ${response.status} - ${errorText}`);
   }
+  
+  return response.json();
 }
 
 export async function getBoards(): Promise<Board[]> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/boards`);
-    if (!response.ok) throw new Error('failed to fetch boards');
-    return response.json();
-  } catch (error) {
-    console.error('Error fetching boards:', error);
-    return MOCK_BOARDS;
+  const response = await fetch(`${API_BASE_URL}/boards`, createFetchOptions());
+  
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`failed to fetch boards: ${response.status} - ${errorText}`);
   }
+  
+  return response.json();
 }
 
 export async function getBoardThreads(boardName: string): Promise<Thread[]> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/boards/${boardName}`);
-    if (!response.ok) throw new Error(`failed to fetch threads for board ${boardName}`);
-    return response.json();
-  } catch (error) {
-    console.error(`Error fetching threads for board ${boardName}:`, error);
-    return [
-      { 
-        id: '1', 
-        title: 'Welcome to the boards', 
-        author: 'system', 
-        created_at: Date.now() / 1000, 
-        pinned: true,
-        tags: ['welcome', 'important']
-      }
-    ];
+  const response = await fetch(`${API_BASE_URL}/boards/${boardName}`, createFetchOptions());
+  
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`failed to fetch threads for board ${boardName}: ${response.status} - ${errorText}`);
   }
+  
+  return response.json();
 }
 
 export async function getThread(boardName: string, threadId: string): Promise<ThreadDetail> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/boards/${boardName}/threads/${threadId}`);
-    if (!response.ok) throw new Error(`failed to fetch thread ${threadId}`);
-    return response.json();
-  } catch (error) {
-    console.error(`Error fetching thread ${threadId}:`, error);
-    return {
-      id: threadId,
-      title: 'Mock Thread',
-      author: 'system',
-      created_at: Date.now() / 1000,
-      pinned: false,
-      tags: [],
-      messages: [
-        {
-          content: 'This is mock data since the backend is not available.',
-          author: 'system',
-          timestamp: new Date().toISOString()
-        }
-      ]
-    };
+  const response = await fetch(`${API_BASE_URL}/boards/${boardName}/threads/${threadId}`, createFetchOptions());
+  
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`failed to fetch thread ${threadId}: ${response.status} - ${errorText}`);
   }
+  
+  return response.json();
 }
 
 export async function createThread(
@@ -183,28 +152,20 @@ export async function createThread(
   title: string, 
   firstMessage: Omit<Message, 'timestamp'>
 ): Promise<Thread> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/boards/${boardName}/threads`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title,
-        first_message: firstMessage,
-      }),
-    });
-    if (!response.ok) throw new Error(`failed to create thread on board ${boardName}`);
-    return response.json();
-  } catch (error) {
-    console.error(`Error creating thread on board ${boardName}:`, error);
-    return {
-      id: `mock-${Date.now()}`,
+  const response = await fetch(`${API_BASE_URL}/boards/${boardName}/threads`, createFetchOptions({
+    method: 'POST',
+    body: JSON.stringify({
       title,
-      author: firstMessage.author,
-      created_at: Date.now() / 1000,
-      pinned: false,
-      tags: []
-    };
+      first_message: firstMessage,
+    }),
+  }));
+  
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`failed to create thread on board ${boardName}: ${response.status} - ${errorText}`);
   }
+  
+  return response.json();
 }
 
 export async function postThreadMessage(
@@ -212,73 +173,51 @@ export async function postThreadMessage(
   threadId: string, 
   message: Omit<Message, 'timestamp'>
 ): Promise<Message> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/boards/${boardName}/threads/${threadId}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(message),
-    });
-    if (!response.ok) throw new Error(`failed to post message to thread ${threadId}`);
-    return response.json();
-  } catch (error) {
-    console.error(`Error posting message to thread ${threadId}:`, error);
-    return {
-      ...message,
-      timestamp: new Date().toISOString()
-    };
+  const response = await fetch(`${API_BASE_URL}/boards/${boardName}/threads/${threadId}/messages`, createFetchOptions({
+    method: 'POST',
+    body: JSON.stringify(message),
+  }));
+  
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`failed to post message to thread ${threadId}: ${response.status} - ${errorText}`);
   }
+  
+  return response.json();
 }
 
 // monologue api functions
 export async function getBots(): Promise<string[]> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/bots`);
-    if (!response.ok) throw new Error('failed to fetch bots');
-    return response.json();
-  } catch (error) {
-    console.error('error fetching bots:', error);
-    return ['curator', 'ole_scrappy', 'normie'];
+  const response = await fetch(`${API_BASE_URL}/bots`, createFetchOptions());
+  
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`failed to fetch bots: ${response.status} - ${errorText}`);
   }
+  
+  return response.json();
 }
 
 export async function getBotInfo(botName: string): Promise<BotInfo> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/bots/${botName}`);
-    if (!response.ok) throw new Error(`failed to fetch bot info for ${botName}`);
-    return response.json();
-  } catch (error) {
-    console.error(`error fetching bot info for ${botName}:`, error);
-    return {
-      name: botName,
-      personality: 'mock personality',
-      provider: 'openai',
-      model: 'gpt-4o',
-      use_monologue: true,
-      debug_mode: false
-    };
+  const response = await fetch(`${API_BASE_URL}/bots/${botName}`, createFetchOptions());
+  
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`failed to fetch bot info for ${botName}: ${response.status} - ${errorText}`);
   }
+  
+  return response.json();
 }
 
 export async function getBotMonologue(botName: string): Promise<Monologue> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/bots/${botName}/monologue`);
-    if (!response.ok) throw new Error(`failed to fetch monologue for ${botName}`);
-    return response.json();
-  } catch (error) {
-    console.error(`error fetching monologue for ${botName}:`, error);
-    return {
-      thoughts: [
-        {
-          content: 'this is mock thought data.',
-          category: 'general',
-          timestamp: Date.now() / 1000
-        }
-      ],
-      tool_considerations: {},
-      max_thoughts: 50,
-      last_interaction_time: Date.now() / 1000
-    };
+  const response = await fetch(`${API_BASE_URL}/bots/${botName}/monologue`, createFetchOptions());
+  
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`failed to fetch monologue for ${botName}: ${response.status} - ${errorText}`);
   }
+  
+  return response.json();
 }
 
 export async function updateBotMonologueSettings(
@@ -289,21 +228,17 @@ export async function updateBotMonologueSettings(
     max_thoughts?: number;
   }
 ): Promise<{ status: string; message: string }> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/bots/${botName}/monologue/settings`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings),
-    });
-    if (!response.ok) throw new Error(`failed to update monologue settings for ${botName}`);
-    return response.json();
-  } catch (error) {
-    console.error(`error updating monologue settings for ${botName}:`, error);
-    return {
-      status: 'error',
-      message: `failed to update settings: ${error}`
-    };
+  const response = await fetch(`${API_BASE_URL}/bots/${botName}/monologue/settings`, createFetchOptions({
+    method: 'PATCH',
+    body: JSON.stringify(settings),
+  }));
+  
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`failed to update monologue settings for ${botName}: ${response.status} - ${errorText}`);
   }
+  
+  return response.json();
 }
 
 export async function addBotThought(
@@ -313,55 +248,45 @@ export async function addBotThought(
     category?: string;
   }
 ): Promise<{ status: string; message: string }> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/bots/${botName}/monologue/thoughts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(thought),
-    });
-    if (!response.ok) throw new Error(`failed to add thought for ${botName}`);
-    return response.json();
-  } catch (error) {
-    console.error(`error adding thought for ${botName}:`, error);
-    return {
-      status: 'error',
-      message: `failed to add thought: ${error}`
-    };
+  const response = await fetch(`${API_BASE_URL}/bots/${botName}/monologue/thoughts`, createFetchOptions({
+    method: 'POST',
+    body: JSON.stringify(thought),
+  }));
+  
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`failed to add thought for ${botName}: ${response.status} - ${errorText}`);
   }
+  
+  return response.json();
 }
 
 export async function clearBotThoughts(
   botName: string
 ): Promise<{ status: string; message: string }> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/bots/${botName}/monologue/thoughts`, {
-      method: 'DELETE',
-    });
-    if (!response.ok) throw new Error(`failed to clear thoughts for ${botName}`);
-    return response.json();
-  } catch (error) {
-    console.error(`error clearing thoughts for ${botName}:`, error);
-    return {
-      status: 'error',
-      message: `failed to clear thoughts: ${error}`
-    };
+  const response = await fetch(`${API_BASE_URL}/bots/${botName}/monologue/thoughts`, createFetchOptions({
+    method: 'DELETE',
+  }));
+  
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`failed to clear thoughts for ${botName}: ${response.status} - ${errorText}`);
   }
+  
+  return response.json();
 }
 
 export async function clearBotToolConsiderations(
   botName: string
 ): Promise<{ status: string; message: string }> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/bots/${botName}/monologue/tool-considerations`, {
-      method: 'DELETE',
-    });
-    if (!response.ok) throw new Error(`failed to clear tool considerations for ${botName}`);
-    return response.json();
-  } catch (error) {
-    console.error(`error clearing tool considerations for ${botName}:`, error);
-    return {
-      status: 'error',
-      message: `failed to clear tool considerations: ${error}`
-    };
+  const response = await fetch(`${API_BASE_URL}/bots/${botName}/monologue/tool-considerations`, createFetchOptions({
+    method: 'DELETE',
+  }));
+  
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`failed to clear tool considerations for ${botName}: ${response.status} - ${errorText}`);
   }
+  
+  return response.json();
 } 

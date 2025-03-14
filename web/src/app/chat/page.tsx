@@ -12,10 +12,12 @@ export default function ChatPage() {
   const [currentChannel, setCurrentChannel] = useState<string>('welcome');
   const [messageInput, setMessageInput] = useState('');
   const [channelInput, setChannelInput] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   // Replace WebSocket with SSE
-  const { connected, messages, sendMessage } = useChatSSE(
+  const { connected, messages, sendMessage, error: sseError } = useChatSSE(
     currentChannel,
     username || 'guest'
   );
@@ -23,11 +25,22 @@ export default function ChatPage() {
   // fetch available channels
   useEffect(() => {
     const fetchChannels = async () => {
+      setIsLoading(true);
+      setApiError(null);
       try {
         const channelList = await getChannels();
-        setChannels(channelList);
+        if (channelList.length === 0) {
+          setApiError('no channels available from the server');
+          setChannels([]);
+        } else {
+          setChannels(channelList);
+        }
       } catch (error) {
         console.error('failed to fetch channels:', error);
+        setApiError('failed to fetch channels from the server');
+        setChannels([]);
+      } finally {
+        setIsLoading(false);
       }
     };
     
@@ -39,12 +52,18 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
   
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!messageInput.trim() || !isLoggedIn) return;
+    if (!messageInput.trim() || !isLoggedIn || !connected) return;
     
-    sendMessage(messageInput);
-    setMessageInput('');
+    try {
+      await sendMessage(messageInput);
+      setMessageInput('');
+    } catch (error) {
+      console.error('error sending message:', error);
+      // Error is already set by the SSE hook
+      // Don't clear the input so the user can try again
+    }
   };
   
   const handleJoinChannel = (e: React.FormEvent) => {
@@ -80,8 +99,8 @@ export default function ChatPage() {
   };
   
   const isBot = (name: string) => {
-    const bots = ['sage', 'teacher', 'researcher', 'curator', 'ole_scrappy', 'normie'];
-    return bots.includes(name);
+    const bots = ['sage', 'teacher', 'researcher', 'curator', 'ole_scrappy', 'normie', 'system', 'bot'];
+    return bots.includes(name.toLowerCase());
   };
   
   if (!isLoggedIn) {
@@ -129,32 +148,61 @@ export default function ChatPage() {
         </div>
         
         <div className="channel-list flex-1 overflow-y-auto">
-          {channels.map((channel) => (
-            <button
-              key={channel}
-              className={`w-full text-left px-3 py-2 rounded mb-1 text-sm ${
-                currentChannel === channel 
-                  ? 'bg-blue-600 text-white' 
-                  : 'hover:bg-gray-700 text-gray-300'
-              }`}
-              onClick={() => setCurrentChannel(channel)}
-            >
-              #{channel}
-            </button>
-          ))}
+          {isLoading ? (
+            <div className="text-center py-4 text-gray-400">
+              loading channels...
+            </div>
+          ) : apiError ? (
+            <div className="text-center py-4 text-red-400">
+              {apiError}
+            </div>
+          ) : channels.length === 0 ? (
+            <div className="text-center py-4 text-gray-400">
+              no channels available
+            </div>
+          ) : (
+            channels.map((channel) => (
+              <button
+                key={channel}
+                className={`w-full text-left px-3 py-2 rounded mb-1 text-sm ${
+                  currentChannel === channel 
+                    ? 'bg-blue-600 text-white' 
+                    : 'hover:bg-gray-700 text-gray-300'
+                }`}
+                onClick={() => setCurrentChannel(channel)}
+              >
+                #{channel}
+              </button>
+            ))
+          )}
         </div>
       </div>
       
       {/* chat area */}
       <div className="bg-gray-800 border border-gray-700 rounded p-4 md:col-span-3 flex flex-col h-full">
-        <div className="mb-4 pb-2 border-b border-gray-700">
+        <div className="mb-4 pb-2 border-b border-gray-700 flex justify-between items-center">
           <h2 className="font-bold">#{currentChannel}</h2>
+          {!connected && (
+            <div className="text-yellow-400 text-xs">
+              disconnected
+            </div>
+          )}
         </div>
         
         <div className="flex-1 overflow-y-auto mb-4">
+          {sseError && (
+            <div className="bg-red-900 border-l-4 border-red-600 text-red-200 p-3 mb-4 text-sm">
+              {sseError}
+            </div>
+          )}
+          
           {messages.length === 0 ? (
             <div className="text-center text-gray-500 mt-8">
-              no messages yet in #{currentChannel}
+              {connected ? (
+                `no messages yet in #${currentChannel}`
+              ) : (
+                'not connected to chat server'
+              )}
             </div>
           ) : (
             <div className="space-y-4">
@@ -191,13 +239,14 @@ export default function ChatPage() {
             type="text"
             value={messageInput}
             onChange={(e) => setMessageInput(e.target.value)}
-            placeholder={`message #${currentChannel}...`}
+            placeholder={connected ? `message #${currentChannel}...` : 'disconnected...'}
             className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded text-gray-200"
+            disabled={!connected}
           />
           <button 
             type="submit"
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-            disabled={!messageInput.trim()}
+            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 disabled:bg-gray-600"
+            disabled={!connected || !messageInput.trim()}
           >
             send
           </button>

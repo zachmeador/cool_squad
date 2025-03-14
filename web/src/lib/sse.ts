@@ -20,29 +20,24 @@ const MOCK_MESSAGES = [
   }
 ];
 
-const MOCK_THREADS = [
-  { 
-    id: '1', 
-    title: 'Welcome to the boards', 
-    author: 'system', 
-    created_at: Date.now() / 1000, 
-    pinned: true,
-    tags: ['welcome', 'important']
-  }
-];
 
 // hook for chat sse
 export function useChatSSE(channel: string, username: string) {
   const [connected, setConnected] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
   const eventSourceRef = useRef<EventSource | null>(null);
-  const [usesMockData, setUsesMockData] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const clientId = useRef(uuidv4());
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const maxReconnectAttempts = 3;
+  const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // connect to sse
   useEffect(() => {
     if (!channel || !username) return;
+
+    console.log(`attempting to connect to channel: ${channel} as ${username}`);
 
     // Clear any existing reconnect timeout
     if (reconnectTimeoutRef.current) {
@@ -50,136 +45,142 @@ export function useChatSSE(channel: string, username: string) {
       reconnectTimeoutRef.current = null;
     }
 
+    // Clear any existing connection timeout
+    if (connectionTimeoutRef.current) {
+      clearTimeout(connectionTimeoutRef.current);
+      connectionTimeoutRef.current = null;
+    }
+
+    // Clear any existing error
+    setError(null);
+
     const connectSSE = () => {
       try {
         // Close any existing connection
         if (eventSourceRef.current) {
+          console.log('closing existing connection');
           eventSourceRef.current.close();
         }
 
-        const sseUrl = `${SSE_BASE_URL}/sse/chat/${channel}?client_id=${clientId.current}`;
+        const sseUrl = `${SSE_BASE_URL}/chat/${channel}?client_id=${clientId.current}`;
         console.log(`connecting to sse: ${sseUrl}`);
         
-        const eventSource = new EventSource(sseUrl);
+        const eventSource = new EventSource(sseUrl, { withCredentials: false });
         eventSourceRef.current = eventSource;
 
+        // Set a timeout to show error if connection doesn't establish quickly
+        connectionTimeoutRef.current = setTimeout(() => {
+          if (!connected) {
+            console.log('connection timeout, showing error');
+            setError('failed to connect to chat server. please check your connection and try again.');
+            if (eventSourceRef.current) {
+              eventSourceRef.current.close();
+            }
+          }
+        }, 5000);
+
         eventSource.onopen = () => {
-          console.log(`connected to chat channel: ${channel}`);
+          console.log(`connected to channel: ${channel}`);
+          if (connectionTimeoutRef.current) {
+            clearTimeout(connectionTimeoutRef.current);
+            connectionTimeoutRef.current = null;
+          }
           setConnected(true);
-          setUsesMockData(false);
+          setError(null);
+          reconnectAttemptsRef.current = 0;
         };
 
-        // Listen for message events
-        eventSource.addEventListener('message', (event) => {
+        eventSource.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            console.log('received chat message:', data);
+            console.log('received message:', data);
             
-            if (data.type === 'message') {
-              setMessages(prev => [...prev, data]);
-            } else if (data.type === 'history') {
+            if (data.type === 'history') {
               setMessages(data.messages || []);
+            } else if (data.type === 'message') {
+              setMessages(prev => [...prev, data]);
             }
           } catch (error) {
-            console.error('error parsing sse message:', error);
+            console.error('error parsing message:', error);
           }
-        });
+        };
 
         // Listen for ping events to keep connection alive
         eventSource.addEventListener('ping', () => {
-          // Just acknowledge the ping
           console.log('received ping');
         });
 
         eventSource.onerror = (error) => {
           console.error('sse error:', error);
+          if (connectionTimeoutRef.current) {
+            clearTimeout(connectionTimeoutRef.current);
+            connectionTimeoutRef.current = null;
+          }
           eventSource.close();
           setConnected(false);
           
-          // If we never connected successfully, use mock data
-          if (!connected && !usesMockData) {
-            console.log('using mock data for chat');
-            setUsesMockData(true);
-            setMessages(MOCK_MESSAGES);
+          // If we've reached max reconnect attempts, show error
+          if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+            console.log('max reconnect attempts reached, showing error');
+            setError('failed to connect to chat server after multiple attempts. please check your connection and try again.');
+            return;
           }
           
-          // Try to reconnect after a delay
+          // Try to reconnect after a delay, with exponential backoff
+          reconnectAttemptsRef.current += 1;
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current - 1), 30000);
+          console.log(`attempting to reconnect in ${delay}ms (attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`);
+          setError(`connection lost. attempting to reconnect (${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`);
+          
           reconnectTimeoutRef.current = setTimeout(() => {
-            console.log('attempting to reconnect...');
             connectSSE();
-          }, 3000);
+          }, delay);
+        };
+
+        return () => {
+          if (connectionTimeoutRef.current) {
+            clearTimeout(connectionTimeoutRef.current);
+            connectionTimeoutRef.current = null;
+          }
         };
       } catch (error) {
         console.error('error connecting to sse:', error);
-        
-        // Use mock data if connection fails
-        if (!usesMockData) {
-          console.log('using mock data for chat due to connection error');
-          setUsesMockData(true);
-          setMessages(MOCK_MESSAGES);
-        }
-        
-        // Try to reconnect after a delay
-        reconnectTimeoutRef.current = setTimeout(() => {
-          console.log('attempting to reconnect...');
-          connectSSE();
-        }, 3000);
+        setError('failed to connect to chat server. please check your connection and try again.');
+        return () => {};
       }
     };
 
-    connectSSE();
+    const cleanup = connectSSE();
 
     return () => {
       // Clean up on unmount
+      if (typeof cleanup === 'function') {
+        cleanup();
+      }
+      
       if (eventSourceRef.current) {
+        console.log('closing sse connection on unmount');
         eventSourceRef.current.close();
       }
       
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
+      
+      if (connectionTimeoutRef.current) {
+        clearTimeout(connectionTimeoutRef.current);
+      }
     };
   }, [channel, username]);
 
   // send message
   const sendMessage = useCallback(async (content: string) => {
-    if (usesMockData) {
-      // Handle mock data
-      setMessages(prev => [
-        ...prev, 
-        {
-          content,
-          author: username,
-          timestamp: new Date().toISOString()
-        }
-      ]);
-      
-      // Add bot response after a delay
-      setTimeout(() => {
-        setMessages(prev => [
-          ...prev,
-          {
-            content: `this is a mock response to: "${content}"`,
-            author: 'bot',
-            timestamp: new Date().toISOString()
-          }
-        ]);
-      }, 1000);
-      return;
+    if (!connected) {
+      setError('cannot send message: not connected to chat server');
+      throw new Error('Not connected to chat server');
     }
     
     try {
-      // Add the message to the local state immediately for better UX
-      const timestamp = new Date().toISOString();
-      setMessages(prev => [
-        ...prev, 
-        {
-          content,
-          author: username,
-          timestamp
-        }
-      ]);
-      
       const response = await fetch(`${SSE_BASE_URL}/channels/${channel}/messages`, {
         method: 'POST',
         headers: {
@@ -189,17 +190,22 @@ export function useChatSSE(channel: string, username: string) {
           content,
           author: username
         }),
+        signal: AbortSignal.timeout(5000), // Add timeout to prevent hanging requests
       });
       
       if (!response.ok) {
         console.error(`error sending message: ${response.status}`);
+        setError(`failed to send message: ${response.status}`);
+        throw new Error(`Failed to send message: ${response.status}`);
       }
     } catch (error) {
       console.error('error sending message:', error);
+      setError('failed to send message. please try again.');
+      throw error;
     }
-  }, [channel, username, usesMockData]);
+  }, [channel, username, connected]);
 
-  return { connected: connected || usesMockData, messages, sendMessage };
+  return { connected, messages, sendMessage, error };
 }
 
 // hook for board sse
@@ -208,9 +214,12 @@ export function useBoardSSE(board: string, username: string) {
   const [threads, setThreads] = useState<any[]>([]);
   const [currentThread, setCurrentThread] = useState<any>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
-  const [usesMockData, setUsesMockData] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const clientId = useRef(uuidv4());
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const maxReconnectAttempts = 3;
+  const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // connect to sse
   useEffect(() => {
@@ -222,6 +231,15 @@ export function useBoardSSE(board: string, username: string) {
       reconnectTimeoutRef.current = null;
     }
 
+    // Clear any existing connection timeout
+    if (connectionTimeoutRef.current) {
+      clearTimeout(connectionTimeoutRef.current);
+      connectionTimeoutRef.current = null;
+    }
+
+    // Clear any existing error
+    setError(null);
+
     const connectSSE = () => {
       try {
         // Close any existing connection
@@ -229,20 +247,36 @@ export function useBoardSSE(board: string, username: string) {
           eventSourceRef.current.close();
         }
 
-        const sseUrl = `${SSE_BASE_URL}/sse/board/${board}?client_id=${clientId.current}`;
+        const sseUrl = `${SSE_BASE_URL}/board/${board}?client_id=${clientId.current}`;
         console.log(`connecting to board sse: ${sseUrl}`);
         
-        const eventSource = new EventSource(sseUrl);
+        const eventSource = new EventSource(sseUrl, { withCredentials: false });
         eventSourceRef.current = eventSource;
+
+        // Set a timeout to show error if connection doesn't establish quickly
+        connectionTimeoutRef.current = setTimeout(() => {
+          if (!connected) {
+            console.log('connection timeout, showing error');
+            setError('failed to connect to board server. please check your connection and try again.');
+            if (eventSourceRef.current) {
+              eventSourceRef.current.close();
+            }
+          }
+        }, 5000);
 
         eventSource.onopen = () => {
           console.log(`connected to board: ${board}`);
+          if (connectionTimeoutRef.current) {
+            clearTimeout(connectionTimeoutRef.current);
+            connectionTimeoutRef.current = null;
+          }
           setConnected(true);
-          setUsesMockData(false);
+          setError(null);
+          reconnectAttemptsRef.current = 0;
         };
 
         // Listen for message events
-        eventSource.addEventListener('message', (event) => {
+        eventSource.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
             console.log('received board message:', data);
@@ -258,124 +292,108 @@ export function useBoardSSE(board: string, username: string) {
               );
             }
           } catch (error) {
-            console.error('error parsing sse message:', error);
+            console.error('error parsing message:', error);
           }
-        });
+        };
 
         // Listen for ping events to keep connection alive
         eventSource.addEventListener('ping', () => {
-          // Just acknowledge the ping
           console.log('received ping');
         });
 
         eventSource.onerror = (error) => {
           console.error('sse error:', error);
+          if (connectionTimeoutRef.current) {
+            clearTimeout(connectionTimeoutRef.current);
+            connectionTimeoutRef.current = null;
+          }
           eventSource.close();
           setConnected(false);
           
-          // If we never connected successfully, use mock data
-          if (!connected && !usesMockData) {
-            console.log('using mock data for board');
-            setUsesMockData(true);
-            setThreads(MOCK_THREADS);
+          // If we've reached max reconnect attempts, show error
+          if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+            console.log('max reconnect attempts reached, showing error');
+            setError('failed to connect to board server after multiple attempts. please check your connection and try again.');
+            return;
           }
           
-          // Try to reconnect after a delay
+          // Try to reconnect after a delay, with exponential backoff
+          reconnectAttemptsRef.current += 1;
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current - 1), 30000);
+          console.log(`attempting to reconnect in ${delay}ms (attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`);
+          setError(`connection lost. attempting to reconnect (${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`);
+          
           reconnectTimeoutRef.current = setTimeout(() => {
-            console.log('attempting to reconnect...');
             connectSSE();
-          }, 3000);
+          }, delay);
+        };
+
+        return () => {
+          if (connectionTimeoutRef.current) {
+            clearTimeout(connectionTimeoutRef.current);
+            connectionTimeoutRef.current = null;
+          }
         };
       } catch (error) {
         console.error('error connecting to sse:', error);
-        
-        // Use mock data if connection fails
-        if (!usesMockData) {
-          console.log('using mock data for board due to connection error');
-          setUsesMockData(true);
-          setThreads(MOCK_THREADS);
-        }
-        
-        // Try to reconnect after a delay
-        reconnectTimeoutRef.current = setTimeout(() => {
-          console.log('attempting to reconnect...');
-          connectSSE();
-        }, 3000);
+        setError('failed to connect to board server. please check your connection and try again.');
+        return () => {};
       }
     };
 
-    connectSSE();
+    const cleanup = connectSSE();
 
     return () => {
       // Clean up on unmount
+      if (typeof cleanup === 'function') {
+        cleanup();
+      }
+      
       if (eventSourceRef.current) {
+        console.log('closing sse connection on unmount');
         eventSourceRef.current.close();
       }
       
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
+      
+      if (connectionTimeoutRef.current) {
+        clearTimeout(connectionTimeoutRef.current);
+      }
     };
   }, [board, username]);
 
   // view thread
   const viewThread = useCallback(async (threadId: string) => {
-    if (usesMockData) {
-      if (!threadId) {
-        setCurrentThread(null);
-        return;
-      }
-      
-      // Mock thread data
-      setCurrentThread({
-        id: threadId,
-        title: 'Mock Thread',
-        author: 'system',
-        created_at: Date.now() / 1000,
-        messages: [
-          {
-            content: 'This is a mock thread since the backend is not available.',
-            author: 'system',
-            timestamp: Date.now() / 1000
-          }
-        ]
-      });
-      return;
-    }
-    
     if (!threadId) {
       setCurrentThread(null);
       return;
     }
 
     try {
-      const response = await fetch(`${SSE_BASE_URL}/boards/${board}/threads/${threadId}`);
+      const response = await fetch(`${SSE_BASE_URL}/boards/${board}/threads/${threadId}`, {
+        signal: AbortSignal.timeout(5000)
+      });
+      
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`failed to fetch thread: ${response.status} - ${errorText}`);
       }
       
       const thread = await response.json();
       setCurrentThread(thread);
     } catch (error) {
       console.error('error fetching thread:', error);
+      setError(`failed to fetch thread: ${error instanceof Error ? error.message : 'unknown error'}`);
     }
-  }, [board, usesMockData]);
+  }, [board]);
 
   // create thread
   const createThread = useCallback(async (title: string, content: string) => {
-    if (usesMockData) {
-      // Create mock thread
-      const newThread = {
-        id: `mock-${Date.now()}`,
-        title,
-        author: username,
-        created_at: Date.now() / 1000,
-        pinned: false,
-        tags: []
-      };
-      
-      setThreads(prev => [newThread, ...prev]);
-      return;
+    if (!connected) {
+      setError('cannot create thread: not connected to board server');
+      throw new Error('Not connected to board server');
     }
     
     try {
@@ -389,39 +407,32 @@ export function useBoardSSE(board: string, username: string) {
           message: content,
           author: username
         }),
+        signal: AbortSignal.timeout(5000)
       });
       
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`failed to create thread: ${response.status} - ${errorText}`);
       }
+      
+      return await response.json();
     } catch (error) {
       console.error('error creating thread:', error);
+      setError(`failed to create thread: ${error instanceof Error ? error.message : 'unknown error'}`);
+      throw error;
     }
-  }, [board, username, usesMockData]);
+  }, [board, username, connected]);
 
   // reply to thread
   const replyToThread = useCallback(async (content: string) => {
-    if (usesMockData && currentThread) {
-      // Add mock reply
-      const updatedThread = {
-        ...currentThread,
-        messages: [
-          ...(currentThread.messages || []),
-          {
-            content,
-            author: username,
-            timestamp: Date.now() / 1000
-          }
-        ]
-      };
-      
-      setCurrentThread(updatedThread);
-      return;
+    if (!connected) {
+      setError('cannot reply to thread: not connected to board server');
+      throw new Error('Not connected to board server');
     }
     
     if (!currentThread) {
-      console.error('no thread selected');
-      return;
+      setError('no thread selected');
+      throw new Error('No thread selected');
     }
 
     try {
@@ -434,22 +445,29 @@ export function useBoardSSE(board: string, username: string) {
           content,
           author: username
         }),
+        signal: AbortSignal.timeout(5000)
       });
       
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`failed to reply to thread: ${response.status} - ${errorText}`);
       }
+      
+      return await response.json();
     } catch (error) {
       console.error('error replying to thread:', error);
+      setError(`failed to reply to thread: ${error instanceof Error ? error.message : 'unknown error'}`);
+      throw error;
     }
-  }, [currentThread, board, username, usesMockData]);
+  }, [currentThread, board, username, connected]);
 
   return { 
-    connected: connected || usesMockData, 
+    connected, 
     threads, 
     currentThread, 
     viewThread, 
     createThread, 
-    replyToThread 
+    replyToThread,
+    error
   };
 } 
