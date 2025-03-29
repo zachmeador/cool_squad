@@ -39,13 +39,17 @@ stop:
 	@if [ -f .server.pid ]; then kill $$(cat .server.pid) 2>/dev/null || true; rm .server.pid; fi
 	@if [ -f .web.pid ]; then kill $$(cat .web.pid) 2>/dev/null || true; rm .web.pid; fi
 	@pkill -f "next dev" 2>/dev/null || true
+	@pkill -f "cool_squad.main" 2>/dev/null || true
+	@pkill -f "python -m cool_squad" 2>/dev/null || true
 	@echo "all servers stopped"
 
 stop-force:
 	@echo "force stopping all potential server processes..."
-	@$(MAKE) stop
-	@pkill -f "cool_squad.main" 2>/dev/null || true
-	@pkill -f "python -m cool_squad" 2>/dev/null || true
+	@if [ -f .server.pid ]; then kill -9 $$(cat .server.pid) 2>/dev/null || true; rm .server.pid; fi
+	@if [ -f .web.pid ]; then kill -9 $$(cat .web.pid) 2>/dev/null || true; rm .web.pid; fi
+	@pkill -9 -f "next dev" 2>/dev/null || true
+	@pkill -9 -f "cool_squad.main" 2>/dev/null || true
+	@pkill -9 -f "python -m cool_squad" 2>/dev/null || true
 	@echo "killed any stray processes"
 
 #
